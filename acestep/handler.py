@@ -3001,12 +3001,6 @@ class AceStepHandler:
                     if pred_wavs.dtype != torch.float32:
                         pred_wavs = pred_wavs.float()
                     
-                    # Anti-clipping normalization: scale down audio that exceeds [-1, 1] range
-                    # Uses 5*std as an estimate of peak amplitude; if already within range, leave unchanged
-                    std = torch.std(pred_wavs, dim=[1, 2], keepdim=True) * 5.0
-                    std[std < 1.0] = 1.0
-                    pred_wavs /= std
-                    
                     self._empty_cache()
             end_time = time.time()
             time_costs["vae_decode_time_cost"] = end_time - start_time
