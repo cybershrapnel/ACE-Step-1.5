@@ -118,36 +118,44 @@ ACE-Step1.5 Rocm Manual for cachy-os and tested with RDNA4/Strix Halo.
 Strix-Halo need manually set to be 16GB VRAM in Bios or more.
 At this moment no GTT Ram size used.
 
+```bash
 #Install python Version 3.11
 sudo pacman -S python311 git 
-
+```
 #Navigate to the folder you want ACE-Step to be in and open the terminal there
 
+```bash
 # Get the Program and change into the folder
 git clone https://github.com/ace-step/ACE-Step-1.5.git
-cd ACE-Step-1.5/ 
-
+cd ACE-Step-1.5/
+```
+```bash
 #Create the virtual python enviroment with python Version 3.11
 python3.11 -m venv .venv
-
+```
+```bash
 #activate the enviroment in the terminal
 source .venv/bin/activate
-
+```
+```bash
 #install pytorch requirements
 pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/rocm6.4
-
+```
+```bash
 #install requirements without uv
 pip install -r requirements-rocm-linux.txt
-
+```
+```bash
 #start the program 
 #"--servername 0.0.0.0" is for making this on all networks card available
 #"--servername 127.0.0.1" is for making this just local available
 #"--servername localhost" or no without the "--servername" option also local only
 python -m acestep.acestep_v15_pipeline --server-name 0.0.0.0 --port 7680
-
+```
+```bash
 #start the program local
 python -m acestep.acestep_v15_pipeline --server-name 127.0.0.1 --port 7680
-
+```
 # Access the webui on your Browser
 http://127.0.0.1:7680
 
