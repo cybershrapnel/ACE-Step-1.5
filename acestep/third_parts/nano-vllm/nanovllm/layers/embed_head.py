@@ -60,6 +60,8 @@ class ParallelLMHead(VocabParallelEmbedding):
             last_indices = context.cu_seqlens_q[1:] - 1
             x = x[last_indices].contiguous()
         logits = F.linear(x, self.weight)
+        # In multi-GPU mode, gather logits from all ranks and concatenate
+        # In single-GPU mode (tp_size=1), skip gathering and return logits directly
         if self.tp_size > 1:
             all_logits = [torch.empty_like(logits) for _ in range(self.tp_size)] if self.tp_rank == 0 else None
             dist_utils.gather(logits, all_logits, 0)

@@ -63,7 +63,7 @@ def barrier():
         dist.barrier()
 
 
-def all_reduce(tensor, op=dist.ReduceOp.SUM):
+def all_reduce(tensor, op=None):
     """
     All-reduce operation. No-op if distributed is not initialized.
     
@@ -72,6 +72,8 @@ def all_reduce(tensor, op=dist.ReduceOp.SUM):
         op: Reduce operation (default: SUM)
     """
     if _distributed_initialized:
+        if op is None:
+            op = dist.ReduceOp.SUM
         dist.all_reduce(tensor, op)
 
 
