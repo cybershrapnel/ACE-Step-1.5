@@ -219,15 +219,55 @@ def wizard_preprocess() -> argparse.Namespace:
     section("Preprocessing Settings")
     checkpoint_dir = ask_path("Checkpoint directory", default="./checkpoints", must_exist=True)
     model_variant = ask("Model variant", default="turbo", choices=["turbo", "base", "sft"])
-    audio_dir = ask_path("Audio directory (source audio files)", must_exist=True)
-    dataset_json = ask("Dataset JSON file (optional, leave empty to skip)", default=None)
+
+    # Ask about the metadata JSON first so the user understands what
+    # information will (or won't) be available during preprocessing.
+    if is_rich_active() and console is not None:
+        console.print(
+            "\n  [dim]A dataset JSON provides lyrics, genre, BPM, key, and "
+            "other metadata for each audio file, plus audio file paths.\n"
+            "  Without it, you will be asked for an audio directory and all "
+            "tracks will default to [Instrumental] with no genre/BPM info.[/]"
+        )
+    else:
+        print(
+            "\n  A dataset JSON provides lyrics, genre, BPM, key, and "
+            "other metadata for each audio file, plus audio file paths.\n"
+            "  Without it, you will be asked for an audio directory and all "
+            "tracks will default to [Instrumental] with no genre/BPM info."
+        )
+    dataset_json = ask("Dataset JSON file (leave empty to skip)", default=None)
     if dataset_json == "None" or dataset_json == "":
         dataset_json = None
-    elif dataset_json and not Path(dataset_json).exists():
-        if is_rich_active() and console is not None:
-            console.print(f"  [yellow]Warning: {dataset_json} not found[/]")
+    elif dataset_json:
+        # Resolve the path (handles missing leading ./ or /)
+        json_path = Path(dataset_json).resolve()
+        if not json_path.is_file():
+            if is_rich_active() and console is not None:
+                console.print(
+                    f"  [yellow]Not found: {dataset_json}[/]\n"
+                    f"  [dim]Falling back to audio directory scan.[/]"
+                )
+            else:
+                print(f"  Not found: {dataset_json}")
+                print("  Falling back to audio directory scan.")
+            dataset_json = None
         else:
-            print(f"  Warning: {dataset_json} not found")
+            dataset_json = str(json_path)
+
+    # Only ask for audio directory when no (valid) JSON was provided.
+    # With a JSON, audio paths come from the file itself.
+    if not dataset_json:
+        if is_rich_active() and console is not None:
+            console.print(
+                "  [dim]Subdirectories will be scanned recursively.[/]"
+            )
+        else:
+            print("  Subdirectories will be scanned recursively.")
+        audio_dir = ask_path("Audio directory (source audio files)", must_exist=True)
+    else:
+        audio_dir = None
+
     tensor_output = ask("Output directory for .pt tensor files", required=True)
     max_duration = ask("Max audio duration in seconds", default=240.0, type_fn=float)
 

@@ -225,3 +225,134 @@ def cleanup_preprocessing_models(models: Dict[str, Any]) -> None:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     logger.info("[OK] Preprocessing models cleaned up")
+
+
+# ---------------------------------------------------------------------------
+# Per-component loaders (for sequential / low-VRAM preprocessing)
+# ---------------------------------------------------------------------------
+
+def load_vae(
+    checkpoint_dir: str | Path,
+    device: str = "cpu",
+    precision: str = "bf16",
+) -> Any:
+    """Load only the VAE (``AutoencoderOobleck``).
+
+    Returns the VAE model in eval mode, or raises ``FileNotFoundError``
+    if the ``vae/`` directory is missing.
+    """
+    from diffusers.models import AutoencoderOobleck
+
+    vae_path = Path(checkpoint_dir) / "vae"
+    if not vae_path.is_dir():
+        raise FileNotFoundError(f"VAE directory not found: {vae_path}")
+
+    dtype = _resolve_dtype(precision)
+    vae = AutoencoderOobleck.from_pretrained(str(vae_path))
+    vae = vae.to(device).to(dtype)
+    vae.eval()
+    logger.info("[OK] VAE loaded from %s (%s)", vae_path, dtype)
+    return vae
+
+
+def load_text_encoder(
+    checkpoint_dir: str | Path,
+    device: str = "cpu",
+    precision: str = "bf16",
+) -> Tuple[Any, Any]:
+    """Load the text tokenizer and encoder (Qwen3-Embedding-0.6B).
+
+    Returns:
+        ``(tokenizer, text_encoder)`` -- both ready for inference.
+
+    Raises ``FileNotFoundError`` if the encoder directory is missing.
+    """
+    from transformers import AutoModel, AutoTokenizer
+
+    text_path = Path(checkpoint_dir) / "Qwen3-Embedding-0.6B"
+    if not text_path.is_dir():
+        raise FileNotFoundError(f"Text encoder directory not found: {text_path}")
+
+    dtype = _resolve_dtype(precision)
+    tokenizer = AutoTokenizer.from_pretrained(str(text_path))
+    encoder = AutoModel.from_pretrained(str(text_path))
+    encoder = encoder.to(device).to(dtype)
+    encoder.eval()
+    logger.info("[OK] Text encoder loaded from %s (%s)", text_path, dtype)
+    return tokenizer, encoder
+
+
+def load_silence_latent(
+    checkpoint_dir: str | Path,
+    device: str = "cpu",
+    precision: str = "bf16",
+    variant: str | None = None,
+) -> torch.Tensor:
+    """Load ``silence_latent.pt`` from the checkpoint directory.
+
+    The tensor is transposed to match the handler convention
+    ``(1, T, 64)`` and moved to *device* / *dtype*.
+
+    Search order:
+        1. ``checkpoint_dir/silence_latent.pt`` (root -- custom layouts)
+        2. ``checkpoint_dir/<variant_subdir>/silence_latent.pt`` (upstream)
+        3. Scan all known variant subdirectories as a last-resort fallback
+
+    Raises ``FileNotFoundError`` if the file cannot be found anywhere.
+    """
+    ckpt = Path(checkpoint_dir)
+    sl_path: Path | None = None
+
+    # 1. Direct root path
+    candidate = ckpt / "silence_latent.pt"
+    if candidate.is_file():
+        sl_path = candidate
+
+    # 2. Variant-specific subdirectory
+    if sl_path is None and variant is not None:
+        subdir = _VARIANT_DIR.get(variant, f"acestep-v15-{variant}")
+        candidate = ckpt / subdir / "silence_latent.pt"
+        if candidate.is_file():
+            sl_path = candidate
+
+    # 3. Last-resort: scan all known variant subdirectories
+    if sl_path is None:
+        for subdir in _VARIANT_DIR.values():
+            candidate = ckpt / subdir / "silence_latent.pt"
+            if candidate.is_file():
+                sl_path = candidate
+                break
+
+    if sl_path is None:
+        raise FileNotFoundError(
+            f"silence_latent.pt not found under {ckpt} "
+            f"(checked root and variant subdirectories)"
+        )
+
+    dtype = _resolve_dtype(precision)
+    sl = torch.load(str(sl_path), weights_only=True).transpose(1, 2)
+    sl = sl.to(device).to(dtype)
+    logger.info("[OK] silence_latent loaded from %s", sl_path)
+    return sl
+
+
+def unload_models(*models: Any) -> None:
+    """Move models to CPU, delete references, and free GPU memory.
+
+    Accepts any number of model objects (or ``None`` values, which are
+    silently skipped).
+    """
+    for obj in models:
+        if obj is None:
+            continue
+        if hasattr(obj, "to"):
+            try:
+                obj.to("cpu")
+            except Exception:
+                pass
+        del obj
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    logger.info("[OK] Models unloaded and GPU cache cleared")
