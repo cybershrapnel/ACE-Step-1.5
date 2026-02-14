@@ -590,9 +590,13 @@ def init_service_wrapper(dit_handler, llm_handler, checkpoint, config_path, devi
             batch_value_int = int(current_batch_size)
             if batch_value_int >= 1:
                 batch_value = min(batch_value_int, max_batch)
+                if batch_value_int > max_batch:
+                    logger.warning(f"Batch size {batch_value_int} exceeds GPU limit {max_batch}, clamping to {batch_value}")
             else:
+                logger.warning(f"Invalid batch size {batch_value_int} (must be >= 1), using default {min(2, max_batch)}")
                 batch_value = min(2, max_batch)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid batch size value {current_batch_size} ({type(current_batch_size).__name__}): {e}, using default {min(2, max_batch)}")
             batch_value = min(2, max_batch)
     else:
         batch_value = min(2, max_batch)
