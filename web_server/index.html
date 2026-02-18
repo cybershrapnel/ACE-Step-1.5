@@ -1,0 +1,4785 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MEQUAVIS ACE-Step AI Music Generator</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root{
+      --bg:#0b0d12; --card:#121726; --card2:#0f1320; --text:#e9eefc; --muted:#a9b3cf;
+      --accent:#6aa6ff; --bad:#ff5c7a; --good:#4be38a; --warn:#ffd36a; --line:#1e2742;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; background: radial-gradient(1200px 700px at 20% 0%, rgba(106,166,255,.16), transparent 60%),
+                         radial-gradient(900px 600px at 90% 10%, rgba(75,227,138,.12), transparent 55%),
+                         var(--bg);
+      color:var(--text); font-family:var(--sans);
+      min-height:100vh;
+    }
+    header{
+      padding:28px 18px 10px;
+      max-width:1100px; margin:0 auto;
+      display:flex; gap:16px; align-items:flex-end; justify-content:space-between; flex-wrap:wrap;
+    }
+    h1{margin:0; font-size:20px; letter-spacing:.2px}
+    .sub{margin:6px 0 0; color:var(--muted); font-size:13px}
+    main{max-width:1100px; margin:0 auto; padding:14px 18px 34px; display:grid; gap:14px}
+    .grid{display:grid; grid-template-columns: 1.2fr .8fr; gap:14px}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.06);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:14px 14px 12px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      background: linear-gradient(180deg, rgba(18,23,38,.85), rgba(18,23,38,.35));
+      display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    }
+    .card .hd .title{font-weight:700; font-size:14px}
+    .card .bd{padding:14px}
+    label{display:block; font-size:12px; color:var(--muted); margin:10px 0 6px}
+    input[type="text"], input[type="password"], textarea, select{
+      width:100%;
+      background: rgba(7,10,18,.65);
+      color: var(--text);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 12px;
+      padding:10px 10px;
+      font-size: 13px;
+      outline:none;
+    }
+    textarea{min-height:150px; resize:vertical; line-height:1.35}
+    .row{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    @media (max-width:700px){ .row{grid-template-columns:1fr} }
+    .btnrow{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+    button{
+      border:0;
+      background: rgba(106,166,255,.18);
+      color: var(--text);
+      padding:10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:700;
+      font-size: 13px;
+      transition: transform .06s ease, background .2s ease, opacity .2s ease;
+    }
+    button:hover{background: rgba(106,166,255,.25)}
+    button:active{transform: translateY(1px)}
+    button.secondary{background: rgba(255,255,255,.08)}
+    button.secondary:hover{background: rgba(255,255,255,.12)}
+    button.danger{background: rgba(255,92,122,.16)}
+    button.danger:hover{background: rgba(255,92,122,.22)}
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .pill{
+      font-family:var(--mono);
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.25);
+      color: var(--muted);
+      display:inline-flex; align-items:center; gap:8px;
+    }
+    .dot{width:8px; height:8px; border-radius:50%; background: var(--muted); display:inline-block}
+    .dot.good{background: var(--good)}
+    .dot.bad{background: var(--bad)}
+    .dot.warn{background: var(--warn)}
+    .kv{display:grid; grid-template-columns: 140px 1fr; gap:8px 10px; font-size:13px}
+    .k{color:var(--muted)}
+    .v{font-family:var(--mono); color:var(--text); word-break:break-word}
+    .mono{font-family:var(--mono)}
+    .msg{
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.25);
+      border-radius: 12px;
+      padding:10px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height:1.4;
+      white-space: pre-wrap;
+    }
+    .msg.good{border-color: rgba(75,227,138,.25); color: rgba(230,255,242,.95)}
+    .msg.bad{border-color: rgba(255,92,122,.28); color: rgba(255,235,240,.95)}
+    .msg.warn{border-color: rgba(255,211,106,.28); color: rgba(255,249,230,.95)}
+    details{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding:10px 12px;
+      background: rgba(0,0,0,.20);
+      margin-top:10px;
+    }
+    summary{cursor:pointer; color: var(--muted); font-size:13px; font-weight:700}
+    .small{font-size:12px; color: var(--muted)}
+    .bar{
+      height:10px; background: rgba(255,255,255,.06);
+      border-radius: 999px; overflow:hidden; border:1px solid rgba(255,255,255,.10)
+    }
+    .bar > div{height:100%; width:0%; background: rgba(106,166,255,.55)}
+    a{color: var(--accent); text-decoration:none}
+    a:hover{text-decoration:underline}
+    footer{max-width:1100px; margin:0 auto; padding:0 18px 22px; color:var(--muted); font-size:12px}
+    .hint{
+      border:1px dashed rgba(255,255,255,.16);
+      background: rgba(0,0,0,.18);
+      border-radius: 12px;
+      padding:10px 12px;
+      font-size:12px; color: var(--muted);
+      line-height:1.35;
+    }
+/* Scrollable song list so it doesn't extend the page forever */
+.songListWrap{
+  margin-top: 8px;
+  max-height: clamp(260px, 45vh, 560px);
+  overflow-y: auto;
+  padding-right: 6px;           /* keeps scrollbar off the content */
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  background: rgba(0,0,0,.12);
+}
+
+/* optional: nicer scrollbar (works in modern browsers) */
+.songListWrap{ scrollbar-width: thin; scrollbar-color: rgba(106,166,255,.45) rgba(255,255,255,.08); }
+.songListWrap::-webkit-scrollbar{ width: 10px; }
+.songListWrap::-webkit-scrollbar-track{ background: rgba(255,255,255,.06); border-radius: 10px; }
+.songListWrap::-webkit-scrollbar-thumb{ background: rgba(106,166,255,.35); border-radius: 10px; }
+.songListWrap::-webkit-scrollbar-thumb:hover{ background: rgba(106,166,255,.55); }
+
+  </style>
+</head>
+
+<body>
+<header>
+  <div>
+    <h1>MEQUAVIS ACE-Step AI Music Generator</h1>
+    <div class="sub">Submit a song job, watch the queue, and play/download when ready.</div>
+  </div>
+  <div class="pill" id="healthPill"><span class="dot warn" id="healthDot"></span><span id="healthText">Not checked</span></div>
+</header>
+
+<main class="grid">
+  <!-- Left: form -->
+  <section class="card">
+    <div class="hd">
+      <div class="title">Create a generation task</div>
+      <div class="pill"><span class="dot" id="runDot"></span><span id="runText">Idle</span></div>
+    </div>
+    <div class="bd">
+      <div class="row">
+        <div>
+          <label for="baseUrl">API Base URL</label>
+          <input id="baseUrl" type="text" placeholder="http://localhost:8001" />
+          <div class="small" style="margin-top:6px">
+            Tip: Make good music!
+          </div>
+        </div>
+        <div>
+          <label for="authMode">Auth</label>
+          <select id="authMode">
+            <option value="none">No API key</option>
+            <option value="header">Authorization: Bearer (recommended)</option>
+            <option value="body">ai_token in JSON body</option>
+          </select>
+          <label for="apiKey">API Key (optional)</label>
+          <input id="apiKey" type="password" placeholder="your-api-key" />
+        </div>
+      </div>
+
+      <label for="prompt">Style Prompt (prompt / caption)</label>
+      <textarea id="prompt" placeholder="e.g., darksynth glitch-hop, heavy bass, robotic ad-libs..."></textarea>
+
+      <label for="lyrics">Lyrics (Leave blank for instrumental)</label>
+      <textarea id="lyrics" placeholder="[Verse 1] ..."></textarea>
+
+      <details>
+        <summary>Advanced options</summary>
+
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label for="model">Model</label>
+            <select id="model">
+              <option value="">(loading...)</option>
+            </select>
+          </div>
+          <div>
+            <label for="formatOut">Audio format</label>
+            <select id="formatOut">
+              <option value="mp3" selected>mp3</option>
+              <option value="wav">wav</option>
+              <option value="flac">flac</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="thinking">Quality mode (thinking=true)</label>
+            <select id="thinking">
+              <option value="true" selected>true (recommended)</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div>
+            <label for="useFormat">Enhance/format input (use_format=true)</label>
+            <select id="useFormat">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="duration">Duration seconds (audio_duration)</label>
+            <input id="duration" type="text" placeholder="e.g., 30 (optional)" />
+          </div>
+          <div>
+            <label for="bpm">BPM</label>
+            <input id="bpm" type="text" placeholder="e.g., 120 (optional)" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="keyScale">Key / scale (key_scale)</label>
+            <input id="keyScale" type="text" placeholder="e.g., E Minor (optional)" />
+          </div>
+          <div>
+            <label for="timeSig">Time signature (time_signature)</label>
+            <input id="timeSig" type="text" placeholder="e.g., 4 (for 4/4) (optional)" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="steps">Inference steps</label>
+            <input id="steps" type="text" placeholder="e.g., 8 (optional)" />
+          </div>
+          <div>
+            <label for="batchSize">Batch size (max 8)</label>
+            <input id="batchSize" type="text" placeholder="e.g., 2 (optional)" />
+          </div>
+        </div>
+      </details>
+
+      <div class="btnrow">
+        <button id="btnHealth" class="secondary">Check server</button>
+        <button id="btnModels" class="secondary">Reload models</button>
+        <button id="btnGenerate">Generate</button>
+        <button id="btnStop" class="danger" disabled>Stop polling</button>
+      </div>
+
+      <div id="formMsg" class="hint" style="margin-top:12px">
+        Please download your songs! I can not store them indefinitely... <span class="mono">Please consider cashapp support to $nanocheeze or sending some litecoin to LeWKV2SwbSr1YotCSD99pnTSTA53xcQk2Z</span><br /> Then maybe I can offer better service and please don't forget to support Ace-Step! This is running off of a single RTX 3060 and a godaddy shared hosting proxy. It does not have a lot of capacity right now. I have several 3090s and 4060s I can bring online but I don't have the resources to power all that at the moment.
+      </div>
+    </div>
+  </section>
+
+  <!-- Right: status/result -->
+  <section class="card">
+    <div class="hd">
+      <div class="title">Queue & Song List</div>
+      <div class="pill"><span class="dot warn" id="statusDot"></span><span id="statusText">No task</span></div>
+    </div>
+    <div class="bd">
+      <div class="kv">
+        <div class="k">Task ID</div><div class="v" id="taskId">—</div>
+
+        <div class="k">Initial queue pos</div><div class="v" id="qInit">—</div>
+        <div class="k">Estimated pos</div><div class="v" id="qEst">—</div>
+        <div class="k">Queue size</div><div class="v" id="qSize">—</div>
+        <div class="k">Running</div><div class="v" id="qRunning">—</div>
+
+        <div class="k">Elapsed</div><div class="v" id="elapsed">—</div>
+        <div class="k">Last check</div><div class="v" id="lastCheck">—</div>
+      </div>
+
+      <div style="margin:12px 0 8px" class="bar" title="Estimated progress">
+        <div id="progressBar"></div>
+      </div>
+      <div class="small" id="progressText">—</div>
+
+      <div id="log" class="msg" style="margin-top:12px">Ready.</div>
+
+      <!-- ALWAYS visible main player + list -->
+      <div id="resultBox" style="margin-top:12px;">
+        <div class="msg good" id="resultMeta">No songs yet.</div>
+
+        <audio id="player" controls style="width:100%; margin-top:10px"></audio>
+
+        <div style="margin-top:10px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap">
+          <a id="downloadLink" href="#" download>Download current</a>
+          <a id="btnShowAllSongs" href="#">Show new songs</a>
+        </div>
+
+        <div class="small" style="margin-top:10px">Song List</div>
+        <div class="songListWrap">
+  <div id="songList" style="display:grid; gap:8px; padding:10px"></div>
+</div>
+
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Visit the Ace-Step GitHub: <a href="https://github.com/ace-step/ACE-Step-1.5">Ace-Step</a> or <a href="https://acemusic.ai">acemusic.ai</a> Server hosted by <a href="https://mequavis.com">mequavis.com</a>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- Helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  function nowIso() {
+    const d = new Date();
+    return d.toLocaleString();
+  }
+
+  function setPill(dotEl, textEl, state, text){
+    dotEl.classList.remove("good","bad","warn");
+    if(state === "good") dotEl.classList.add("good");
+    else if(state === "bad") dotEl.classList.add("bad");
+    else if(state === "warn") dotEl.classList.add("warn");
+    textEl.textContent = text;
+  }
+
+  function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+function applyDownloadFilenameFromHref(dl){
+  // dl is your <a> download link, and dl.href is already set
+  try{
+    const u = new URL(dl.href, location.origin);
+
+    // if proxied: /v1/audio?path=...windows\path\file.mp3
+    const p = u.searchParams.get("path"); // decoded string
+    const raw = p || u.pathname;
+
+    const filename = String(raw).split(/[\\/]/).pop(); // handles \ and /
+    if(filename) dl.download = filename;
+    else dl.removeAttribute("download");
+  }catch{
+    dl.removeAttribute("download");
+  }
+}
+
+
+  function normBaseUrl(u){
+    u = (u || "").trim();
+    if(!u) return "http://localhost:8001";
+    return u.replace(/\/+$/, "");
+  }
+
+
+  function toNumOrUndef(v){
+    const t = String(v || "").trim();
+    if(!t) return undefined;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  function toIntOrUndef(v){
+    const n = toNumOrUndef(v);
+    if(n === undefined) return undefined;
+    return Math.trunc(n);
+  }
+
+  function safeJsonParse(s){
+    try { return JSON.parse(s); } catch { return null; }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    }[c]));
+  }
+
+  function fmtShort(s, max=90){
+    s = String(s || "").replace(/\s+/g, " ").trim();
+    return s.length > max ? (s.slice(0, max-1) + "…") : s;
+  }
+
+  function absSongUrl(fileOrUrl){
+  const s = String(fileOrUrl || "").trim();
+  if(!s) return "";
+
+  // already absolute
+  if(/^https?:\/\//i.test(s)) return s;
+
+  const base = normBaseUrl($("baseUrl").value);
+
+  try{
+    // ensure trailing slash so URL parsing is consistent
+    const b = new URL(base.endsWith("/") ? base : base + "/");
+    const basePath = b.pathname.replace(/\/+$/, ""); // "" or "/ace" or "/ace/whatever"
+
+    // API sometimes returns "root" paths (starts with "/").
+    // If we're hosted under a subpath (like /ace), we must keep that prefix.
+    if(s.startsWith("/")){
+      // If base has a non-root path and the server path doesn't already include it, prefix it.
+      if(basePath && basePath !== "/" && !s.startsWith(basePath + "/")){
+        return b.origin + basePath + s;
+      }
+      return b.origin + s;
+    }
+
+    // relative path (e.g. "api_audio/..")
+    return new URL(s, b.origin + (basePath || "") + "/").toString();
+
+  }catch{
+    // fallback best-effort if URL parsing fails
+    const base2 = String(base || "").replace(/\/+$/, "");
+
+    if(s.startsWith("/")){
+      const m = base2.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
+      if(m){
+        const origin = m[1];
+        const path = (m[2] || "").replace(/\/+$/, "");
+        if(path && !s.startsWith(path + "/")) return origin + path + s;
+        return origin + s;
+      }
+      return s;
+    }
+
+    return base2 + "/" + s.replace(/^\/+/, "");
+  }
+}
+
+  // --- Download filename helper (forces correct filename for /v1/audio?file=... style URLs) ---
+  function extractDownloadFilename(anyUrlOrPath, serverItem=null){
+    // Prefer explicit filename hints from server list items
+    const hint =
+      (serverItem && (serverItem.file || serverItem.filename || serverItem.name || serverItem.path)) || "";
+
+    function baseNameFromString(s){
+      s = String(s || "").trim();
+      if(!s) return "";
+
+      // Try URL parsing first (works for absolute, relative, and /v1/audio?file=...)
+      try{
+        const u = new URL(s, window.location.origin);
+        const sp = u.searchParams;
+
+        // Common query keys that carry the real filename/path
+        for (const key of ["filename","file","path","name"]) {
+          const v = sp.get(key);
+          if (v) {
+            const last = (String(v).split("/").filter(Boolean).pop() || "");
+            return decodeURIComponent(last);
+          }
+        }
+
+        // Otherwise use the URL path basename
+        const last = (u.pathname.split("/").filter(Boolean).pop() || "");
+        return decodeURIComponent(last);
+      }catch{
+        // Fallback: split manually
+        const noQ = s.split("?")[0].split("#")[0];
+        const last = (noQ.split("/").filter(Boolean).pop() || "");
+        try { return decodeURIComponent(last); } catch { return last; }
+      }
+    }
+
+    // 1) from serverItem hint, 2) from url itself
+    let name = baseNameFromString(hint) || baseNameFromString(anyUrlOrPath);
+
+    // If we still got nothing, bail
+    if(!name) return "";
+
+    // Light sanitize (avoid weird path chars in download name)
+    name = name.replace(/[\\\/:*?"<>|]+/g, "_").trim();
+
+    return name;
+  }
+
+function downloadBasename(pathOrUrl){
+  const s = String(pathOrUrl || "").trim();
+  if(!s) return "";
+  try{
+    const u = /^https?:\/\//i.test(s) ? new URL(s) : new URL(s, window.location.origin);
+    const last = (u.pathname.split("/").filter(Boolean).pop() || "");
+    return decodeURIComponent(last);
+  }catch{
+    const noQ = s.split("?")[0].split("#")[0];
+    const last = (noQ.split("/").filter(Boolean).pop() || "");
+    try { return decodeURIComponent(last); } catch { return last; }
+  }
+}
+
+
+  function extractSongMeta(item){
+    // Be tolerant of different shapes coming back from proxy/server
+    const m = item?.metas || item?.meta || item?.metadata || {};
+    const meta = {
+      title: String(item?.title ?? m?.title ?? "").trim(),
+      author: String(item?.author ?? m?.author ?? "").trim(),
+      signature: String(item?.signature ?? m?.signature ?? "").trim(),
+      prompt: String(item?.prompt ?? item?.label ?? m?.prompt ?? m?.label ?? "").trim(),
+      lyrics: String(item?.lyrics ?? m?.lyrics ?? "").trim(),
+    };
+    return meta;
+  }
+
+function pickSongDisplayTitle(meta, fallbackPromptOrLabel){
+  const t = String(meta?.title || "").trim();
+  const fb = String(fallbackPromptOrLabel || "").trim();
+
+  if(!t) return fb || "Song";
+  if(!fb) return t;
+
+  const prefix = t + " - ";
+
+  // If fallback already includes the title prefix, don't add it again
+  if(fb === t || fb.startsWith(prefix)) return fb;
+
+  return prefix + fb;
+}
+
+
+  function pickSongDisplayTitle2(meta, fallbackPromptOrLabel){
+    const t = String(meta?.title || "").trim();
+    if(t) return t;
+    const fb = String(fallbackPromptOrLabel || "").trim();
+    return fb || "Song";
+  }
+
+  // ---------- State ----------
+  let taskId = null;
+  let pollTimer = null;
+  let pollInFlight = false;
+  let startedAtMs = null;
+
+  let qInit = null;
+  let baselineCompleted = null; // succeeded + failed at submission time
+  let lastStats = null;
+
+  const POLL_MS = 3000;
+
+  // --- Playlist / song list ---
+  const songs = [];                 // { url, label, createdAt, taskId, outputIndex }
+  const songUrlToIndex = new Map(); // url -> index
+  const songUrlToMeta = new Map();  // url -> meta (latest/merged)
+  let currentSongIndex = -1;
+
+
+
+  function showSongMeta(i){
+    const s = songs[i];
+    if(!s){
+      $("resultMeta").textContent = "No metadata.";
+      return;
+    }
+
+    const meta = s.meta || songUrlToMeta.get(s.url) || {};
+    const title = pickSongDisplayTitle2(meta, s.label);
+
+    const lines = [];
+    lines.push(`🎵 ${title}`);
+
+    if(meta.author) lines.push(`Author: ${meta.author}`);
+    if(s.createdAt) lines.push(`Created: ${s.createdAt}`);
+    if(s.taskId) lines.push(`Task: ${s.taskId}`);
+    lines.push(`Output: ${Number(s.outputIndex) + 1}`);
+
+    if(meta.signature) lines.push(`Signature: ${meta.signature}`);
+    if(meta.prompt) lines.push(`Prompt: ${fmtShort(meta.prompt, 220)}`);
+    if(meta.lyrics) lines.push(`Lyrics: ${fmtShort(meta.lyrics, 220)}`);
+
+    $("resultMeta").textContent = lines.join("\n");
+  }
+
+
+  // ---------- API ----------
+  async function apiFetch(path, {method="GET", body=null, headers={}} = {}){
+    const baseUrl = normBaseUrl($("baseUrl").value);
+    const url = baseUrl + path;
+
+    const authMode = $("authMode").value;
+    const apiKey = $("apiKey").value.trim();
+    const hdrs = Object.assign({}, headers);
+
+    if(method !== "GET" && method !== "HEAD") hdrs["Content-Type"] = "application/json";
+
+    if(authMode === "header" && apiKey){
+      hdrs["Authorization"] = "Bearer " + apiKey;
+    }
+
+    const resp = await fetch(url, {
+      method,
+      headers: hdrs,
+      body: body ? JSON.stringify(body) : null,
+    });
+
+    let json = null;
+    try { json = await resp.json(); } catch { /* ignore */ }
+
+    if(!resp.ok){
+      const msg = (json && (json.detail || json.error)) ? (json.detail || json.error) : (`HTTP ${resp.status}`);
+      throw new Error(msg);
+    }
+
+    if(json && typeof json === "object" && ("code" in json) && ("data" in json)){
+      if(json.code !== 200){
+        throw new Error(json.error || ("API code " + json.code));
+      }
+      return json.data;
+    }
+
+    return json;
+  }
+
+  async function healthCheck(){
+    setPill($("healthDot"), $("healthText"), "warn", "Checking…");
+    try{
+      const data = await apiFetch("/health", {method:"GET"});
+      setPill($("healthDot"), $("healthText"), "good", `OK (${data?.service || "service"})`);
+      logInfo(`Health OK: ${JSON.stringify(data)}`);
+    }catch(e){
+      setPill($("healthDot"), $("healthText"), "bad", "Unreachable");
+      logError(`Health failed: ${e.message}`);
+    }
+  }
+
+  async function loadModels(){
+    $("model").innerHTML = `<option value="">(loading...)</option>`;
+    try{
+      const data = await apiFetch("/v1/models", {method:"GET"});
+      const models = data?.models || [];
+      const def = data?.default_model || "";
+      const opts = [];
+
+      opts.push(`<option value="">(default${def ? ": " + escapeHtml(def) : ""})</option>`);
+      for(const m of models){
+        const name = m?.name;
+        if(!name) continue;
+        const isDef = m?.is_default || (name === def);
+        opts.push(`<option value="${escapeHtml(name)}"${isDef ? " selected" : ""}>${escapeHtml(name)}${isDef ? " (default)" : ""}</option>`);
+      }
+      $("model").innerHTML = opts.join("");
+      logInfo(`Loaded models: ${models.map(m=>m.name).filter(Boolean).join(", ") || "(none)"}`);
+    }catch(e){
+      $("model").innerHTML = `<option value="">(failed to load models)</option>`;
+      logError(`Model load failed: ${e.message}`);
+    }
+  }
+
+  async function getStats(){
+    try{
+      const data = await apiFetch("/v1/stats", {method:"GET"});
+      lastStats = data;
+      const queued = data?.jobs?.queued ?? "—";
+      const running = data?.jobs?.running ?? "—";
+      $("qSize").textContent = String(data?.queue_size ?? "—");
+      $("qRunning").textContent = `${running} running / ${queued} queued`;
+      return data;
+    }catch{
+      $("qSize").textContent = "—";
+      $("qRunning").textContent = "—";
+      return null;
+    }
+  }
+
+  // ---------- UI logging ----------
+  function logInfo(msg){ $("log").className = "msg"; $("log").textContent = msg; }
+  function logWarn(msg){ $("log").className = "msg warn"; $("log").textContent = msg; }
+  function logError(msg){ $("log").className = "msg bad"; $("log").textContent = msg; }
+  function logGood(msg){ $("log").className = "msg good"; $("log").textContent = msg; }
+
+  function setRunState(isRunning){
+    if(isRunning){
+      setPill($("runDot"), $("runText"), "warn", "Running");
+      $("btnGenerate").disabled = true;
+      $("btnStop").disabled = false;
+    }else{
+      setPill($("runDot"), $("runText"), "idle", "Idle");
+      $("btnGenerate").disabled = false;
+      $("btnStop").disabled = true;
+    }
+  }
+
+  function setStatus(stateText, state){
+    setPill($("statusDot"), $("statusText"), state, stateText);
+  }
+
+  // IMPORTANT: do NOT clear player or list
+  function resetResultUI(){
+    $("resultMeta").textContent = "";
+  }
+
+  function updateElapsed(){
+    if(!startedAtMs){ $("elapsed").textContent = "—"; return; }
+    const ms = Date.now() - startedAtMs;
+    const sec = Math.floor(ms/1000);
+    const m = Math.floor(sec/60);
+    const s = sec % 60;
+    $("elapsed").textContent = `${m}m ${s}s`;
+  }
+
+  function updateQueueEstimate(){
+    if(qInit == null || baselineCompleted == null || !lastStats){
+      $("qEst").textContent = "—";
+      $("progressBar").style.width = "0%";
+      $("progressText").textContent = "—";
+      return;
+    }
+    const completedNow = (lastStats?.jobs?.succeeded ?? 0) + (lastStats?.jobs?.failed ?? 0);
+    const deltaDone = completedNow - baselineCompleted;
+    const est = clamp((qInit - deltaDone), 1, qInit);
+    $("qEst").textContent = `${est} (est.)`;
+
+    if(qInit <= 1){
+      $("progressBar").style.width = "100%";
+      $("progressText").textContent = "Estimated progress: waiting on generation…";
+    }else{
+      const pct = clamp(((qInit - est) / (qInit - 1)) * 100, 0, 100);
+      $("progressBar").style.width = pct.toFixed(0) + "%";
+      $("progressText").textContent = `Estimated progress: ${pct.toFixed(0)}% (best-effort)`;
+    }
+  }
+
+
+  // ---------- Focus current song in scroll list ----------
+  function focusAttention(i, { behavior = "smooth" } = {}) {
+    const row = document.querySelector(`#songList [data-song-index="${Number(i)}"]`);
+    if (!row) return;
+
+    // the scrollable container
+    const wrap =
+      row.closest(".songListWrap") ||
+      document.querySelector(".songListWrap");
+
+    if (!wrap) return;
+
+    const rowRect = row.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+
+    // If fully visible already, do nothing
+    const fullyVisible = rowRect.top >= wrapRect.top && rowRect.bottom <= wrapRect.bottom;
+    if (fullyVisible) return;
+
+    // Compute the row's top relative to the scroll container
+    const rowTopInWrap = (rowRect.top - wrapRect.top) + wrap.scrollTop;
+
+    // Center it in the viewport of the container
+    const targetTop = rowTopInWrap - (wrap.clientHeight / 2) + (rowRect.height / 2);
+
+    wrap.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior
+    });
+  }
+
+
+  // ---------- Playlist / main player ----------
+  function setNowPlaying(i){
+    currentSongIndex = i;
+    // expose index for your prev/next helper script
+    try { window.currentSongIndex = i; } catch {}
+
+    const rows = document.querySelectorAll("#songList [data-song-index]");
+    rows.forEach(el => {
+      const idx = Number(el.getAttribute("data-song-index"));
+      el.style.outline = (idx === currentSongIndex) ? "2px solid rgba(106,166,255,.45)" : "none";
+    });
+  }
+
+
+  function loadIntoMainPlayer(i, autoplay){
+    const s = songs[i];
+    if(!s) return;
+
+    const player = $("player");
+    player.src = s.url;
+        const dlName = extractDownloadFilename(s.url, s.serverItem || null);
+    $("downloadLink").href = s.url;
+applyDownloadFilenameFromHref($("downloadLink"));
+    $("downloadLink").download = (s.downloadName || ""); // blank = browser uses URL basename normally
+
+
+
+    setNowPlaying(i);
+focusAttention(i);
+    // show meta for the selected song (no server calls)
+    showSongMeta(i);
+
+    // update browser tab title using metadata.title, fallback to label/prompt
+    const meta = s.meta || songUrlToMeta.get(s.url) || {};
+    const title = pickSongDisplayTitle(meta, s.label);
+    document.title = title ? `${title} — MEQUAVIS ACE-Step AI Music Generator` : "MEQUAVIS ACE-Step AI Music Generator";
+    if(autoplay){
+      Promise.resolve(player.play()).catch(()=>{});
+    }
+  }
+
+
+    function addSongToList(url, {label="", taskId="", outputIndex=0, createdAt="", meta=null, serverItem=null, downloadName=""} = {}){
+
+    url = absSongUrl(url);
+    if(!url) return -1;
+
+    // If already in list, MERGE meta + update caption
+    if(songUrlToIndex.has(url)){
+if(downloadName){
+  s.downloadName = downloadBasename(downloadName);
+}
+
+      const idx = songUrlToIndex.get(url);
+      const s = songs[idx];
+
+      // merge meta (new wins)
+      if(meta && typeof meta === "object"){
+        s.meta = Object.assign({}, s.meta || {}, meta);
+        songUrlToMeta.set(url, Object.assign({}, songUrlToMeta.get(url) || {}, meta));
+      }
+      if(serverItem) s.serverItem = serverItem;
+      if(taskId && !s.taskId) s.taskId = taskId;
+      if(createdAt && !s.createdAt) s.createdAt = createdAt;
+
+      // update visible caption if we can find it
+      const row = document.querySelector(`#songList [data-song-index="${idx}"]`);
+      if(row){
+        const cap = row.querySelector(".__ncz_caption__");
+        if(cap){
+          const metaNow = s.meta || songUrlToMeta.get(url) || {};
+          cap.textContent = pickSongDisplayTitle(metaNow, label || s.label || `Song ${idx + 1}`);
+
+        }
+  // ✅ refresh download filename too
+        const dlA = Array.from(row.querySelectorAll("a"))
+          .find(a => (a.textContent || "").trim().toLowerCase() === "download") ||
+          row.querySelector('a[download]');
+
+        if (dlA){
+  // ✅ recompute download name from dlA.href
+  applyDownloadFilenameFromHref(dlA);
+}
+      }
+      return idx;
+    }
+
+    const idx = songs.length;
+
+    // decide the visible title NOW (meta.title preferred)
+    const metaObj = (meta && typeof meta === "object") ? meta : {};
+    const displayTitle = pickSongDisplayTitle(metaObj, label);
+
+const dlName = downloadBasename(downloadName);
+
+songs.push({
+  url,
+  label: displayTitle,
+  taskId,
+  outputIndex,
+  createdAt,
+  meta: metaObj,
+  serverItem,
+  downloadName: dlName
+});
+
+    songUrlToIndex.set(url, idx);
+    songUrlToMeta.set(url, Object.assign({}, metaObj));
+
+    const row = document.createElement("div");
+    row.setAttribute("data-song-index", String(idx));
+    row.style.padding = "10px";
+    row.style.border = "1px solid rgba(255,255,255,.08)";
+    row.style.borderRadius = "12px";
+    row.style.background = "rgba(0,0,0,.18)";
+
+    const top = document.createElement("div");
+    top.style.display = "flex";
+    top.style.justifyContent = "space-between";
+    top.style.gap = "10px";
+    top.style.flexWrap = "wrap";
+    row.appendChild(top);
+
+    const left = document.createElement("div");
+    left.className = "small __ncz_caption__";
+    left.textContent = displayTitle || `Song ${idx + 1}`;
+    top.appendChild(left);
+
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.gap = "12px";
+    right.style.alignItems = "center";
+    top.appendChild(right);
+
+const play = document.createElement("a");
+play.href = "#";
+play.textContent = "Play";
+play.addEventListener("click", (e) => {
+  e.preventDefault();
+
+  // Do what Meta used to do (highlight + show metadata)
+  setNowPlaying(idx);
+  showSongMeta(idx);
+
+  // Then do normal Play behavior
+  loadIntoMainPlayer(idx, true);
+});
+right.appendChild(play);
+
+const dl = document.createElement("a");
+dl.href = url;
+
+// ✅ sets dl.download correctly for /v1/audio?path=... and normal urls
+applyDownloadFilenameFromHref(dl);
+
+dl.textContent = "Download";
+right.appendChild(dl);
+
+// (Meta button removed)
+
+
+    const metaLine = document.createElement("div");
+    metaLine.className = "small";
+    metaLine.style.marginTop = "6px";
+    const parts = [];
+    parts.push(createdAt || nowIso());
+    if(taskId) parts.push("task " + taskId);
+    parts.push("output " + (Number(outputIndex) + 1));
+    metaLine.textContent = parts.join("  •  ");
+    row.appendChild(metaLine);
+
+    $("songList").prepend(row);
+    return idx;
+  }
+
+
+function onPlayerEnded(){
+  const next = currentSongIndex - 1; // newest-first list: next visible item is "below" (older)
+  if(next >= 0 && next < songs.length){
+    loadIntoMainPlayer(next, true);
+  }
+}
+
+
+    async function showAllSongs(){
+    try{
+      logInfo("Fetching all songs from proxy…");
+      const data = await apiFetch("/songs", {method:"GET"});
+
+      let arr = [];
+      if(Array.isArray(data)) arr = data;
+      else if(data?.songs && Array.isArray(data.songs)) arr = data.songs;
+      else if(data?.data?.songs && Array.isArray(data.data.songs)) arr = data.data.songs;
+
+      // ✅ ONLY flip the server list before processing.
+      // Because addSongToList() uses prepend(), we want to PROCESS oldest->newest
+      // so the newest ends up on top in the DOM.
+      const serverItems = arr.slice().reverse();
+
+      let added = 0;
+      for(const item of serverItems){
+        const file = item?.file || item?.url || item;
+        if(!file) continue;
+
+        const url = absSongUrl(file);
+        if(!url) continue;
+
+        const meta = extractSongMeta(item);
+        const labelBase = fmtShort(pickSongDisplayTitle(meta, item?.label || item?.prompt || "Song"), 90);
+
+        const before = songs.length;
+        addSongToList(url, {
+          label: labelBase,
+          taskId: item?.task_id || "",
+          outputIndex: item?.output_index || 0,
+          createdAt: item?.created_at || "",
+          meta,
+          serverItem: item,
+          downloadName: file  // <-- key line
+        });
+        if(songs.length > before) added++;
+      }
+
+      logGood(`Show all songs: added ${added} new item(s).`);
+    }catch(e){
+      logWarn(`Show all songs not available yet (need proxy /songs).\nError: ${e.message}`);
+    }
+  }
+
+
+  // ---------- Core workflow ----------
+  async function submitTask(){
+    // Do NOT interrupt playback; do NOT clear song list
+    resetResultUI();
+
+    const baseUrl = normBaseUrl($("baseUrl").value);
+    $("baseUrl").value = baseUrl;
+
+    const prompt = $("prompt").value.trim();
+    const lyrics = $("lyrics").value.trim();
+    if(!prompt && !lyrics){
+      logWarn("Please enter a style prompt and/or lyrics.");
+      return;
+    }
+    // ✅ ADD THESE 3 LINES (defines the variables)
+    const author = ($("__ncz_author_input__")?.value || "").trim();
+    const title = ($("__ncz_songtitle_input__")?.value || "").trim();
+    const signature = ($("metaSignature")?.value || "").trim();
+    const body = {
+      prompt: prompt,
+      lyrics: lyrics,
+      thinking: $("thinking").value === "true",
+      use_format: $("useFormat").value === "true",
+      audio_format: $("formatOut").value,
+      // NEW: metadata sent with the generate request
+      author: author || undefined,
+      title: title || undefined,
+      signature: signature || undefined,
+    };
+
+    const model = $("model").value.trim();
+    if(model) body.model = model;
+
+    const dur = toNumOrUndef($("duration").value);
+    const bpm = toIntOrUndef($("bpm").value);
+    const steps = toIntOrUndef($("steps").value);
+    const batchSize = toIntOrUndef($("batchSize").value);
+    const keyScale = $("keyScale").value.trim();
+    const timeSig = $("timeSig").value.trim();
+
+    if(dur !== undefined) body.audio_duration = dur;
+    if(bpm !== undefined) body.bpm = bpm;
+    if(steps !== undefined) body.inference_steps = steps;
+    if(batchSize !== undefined) body.batch_size = batchSize;
+    if(keyScale) body.key_scale = keyScale;
+    if(timeSig) body.time_signature = timeSig;
+
+    const authMode = $("authMode").value;
+    const apiKey = $("apiKey").value.trim();
+    if(authMode === "body" && apiKey){
+      body.ai_token = apiKey;
+    }
+
+    const s0 = await getStats();
+    baselineCompleted = s0 ? ((s0?.jobs?.succeeded ?? 0) + (s0?.jobs?.failed ?? 0)) : null;
+
+    setRunState(true);
+    setStatus("Submitting…", "warn");
+    logInfo("Submitting task…");
+    $("lastCheck").textContent = nowIso();
+    startedAtMs = Date.now();
+    updateElapsed();
+
+    try{
+      const data = await apiFetch("/release_task", {method:"POST", body});
+      taskId = data?.task_id || null;
+      qInit = (data?.queue_position != null) ? Number(data.queue_position) : null;
+
+      $("taskId").textContent = taskId || "—";
+      $("qInit").textContent = (qInit != null) ? String(qInit) : "—";
+
+      if(!taskId) throw new Error("No task_id returned.");
+
+      setStatus("Queued / Running", "warn");
+      logInfo(`Task submitted.\nTask ID: ${taskId}\nInitial queue position: ${qInit != null ? qInit : "—"}`);
+
+      stopPolling();
+      pollTimer = setInterval(pollOnce, POLL_MS);
+      await pollOnce();
+
+    }catch(e){
+      setStatus("Submit failed", "bad");
+      logError(`Submit failed: ${e.message}`);
+      setRunState(false);
+      taskId = null; qInit = null;
+    }
+  }
+
+function setProgress(pct, text){
+  $("progressBar").style.width = (pct == null ? "0%" : (pct + "%"));
+  $("progressText").textContent = text || "—";
+}
+
+  async function pollOnce(){
+    if(!taskId || pollInFlight) return;
+    pollInFlight = true;
+
+    try{
+      await getStats();
+      updateQueueEstimate();
+
+      const data = await apiFetch("/query_result", {
+        method:"POST",
+        body: { task_id_list: [taskId] }
+      });
+
+      $("lastCheck").textContent = nowIso();
+      updateElapsed();
+
+      const item = Array.isArray(data) ? data.find(x => x?.task_id === taskId) : null;
+      if(!item){
+        logWarn("Polling: no task record returned yet.");
+        return;
+      }
+
+      const status = item.status;
+
+      if(status === 0){
+        setStatus("Queued / Running", "warn");
+        logInfo(
+          `Working…\nTask: ${taskId}\nStatus: 0 (queued/running)\n` +
+          `Initial pos: ${qInit ?? "—"} | Est pos: ${$("qEst").textContent}\n` +
+          `Queue size: ${$("qSize").textContent}`
+        );
+        return;
+      }
+
+      if(status === 1){
+        setStatus("Succeeded", "good");
+        stopPolling();
+        setRunState(false);
+
+  setProgress(100, "Generation complete ✅");
+  $("qEst").textContent = "Done";
+
+        const parsed = safeJsonParse(item.result);
+        const results = Array.isArray(parsed) ? parsed : [];
+
+        if(results.length === 0){
+          logGood("Succeeded, but result array was empty/unparseable.");
+          return;
+        }
+
+        const baseUrl = normBaseUrl($("baseUrl").value);
+
+        const urls = [];
+        const meta0 = results[0] || {};
+        const metas = meta0.metas || {};
+        const genInfo = meta0.generation_info || "";
+        const ditModel = meta0.dit_model || "";
+        const lmModel = meta0.lm_model || "";
+
+for(const r of results){
+  const file = r?.file;
+  if(!file) continue;
+  const audioUrl = absSongUrl(file);
+  if(audioUrl) urls.push(audioUrl);
+}
+
+
+        if(urls.length === 0){
+          logGood("Succeeded, but no file URLs were found in result.");
+          return;
+        }
+
+
+
+        // ✅ grab current UI meta values (pollOnce has its own scope)
+        const title = ($("__ncz_songtitle_input__")?.value || "").trim();
+        const author = ($("__ncz_author_input__")?.value || "").trim();
+        const signature = ($("metaSignature")?.value || "").trim(); // if you add one later
+
+
+        // Append songs; do NOT touch main player playback/source.
+        //const labelBase = fmtShort($("prompt").value, 90) || "Generated song";
+        //const labelBase = fmtShort((title || $("prompt").value), 90) || "Generated song";
+        const labelBase = fmtShort((title || $("prompt").value), 90) || "Generated song";
+
+        const createdAt = nowIso();
+
+        const metaForNew = {
+          title: title || "",
+          author: author || "",
+          signature: signature || "",
+          prompt: $("prompt").value.trim(),
+          lyrics: $("lyrics").value.trim(),
+        };
+
+
+        urls.forEach((u, i) => {
+          addSongToList(u, {
+            label: `${fmtShort(pickSongDisplayTitle(metaForNew, $("prompt").value), 90)}  •  (batch ${i + 1}/${urls.length})`,
+            taskId: taskId || "",
+            outputIndex: i,
+            createdAt,
+            meta: metaForNew
+          });
+        });
+
+
+        $("resultMeta").textContent =
+          `✅ Done: appended ${urls.length} output(s)\n` +
+          `Model: ${ditModel || "(default)"}\n` +
+          `LM: ${lmModel || "(n/a)"}\n` +
+          `Metas: ${JSON.stringify(metas)}\n` +
+          (genInfo ? `Info: ${genInfo}` : "");
+
+        logGood(`Generation succeeded. Added ${urls.length} output(s) to the Song List.`);
+        return;
+      }
+
+      if(status === 2){
+        setStatus("Failed", "bad");
+        stopPolling();
+        setRunState(false);
+        logError(`Generation failed.\nTask: ${taskId}`);
+setProgress(0, "Generation failed ❌");
+$("qEst").textContent = "—";
+        return;
+      }
+
+      setStatus(`Unknown status (${status})`, "warn");
+      logWarn(`Unknown status code: ${status}\nRaw item: ${JSON.stringify(item, null, 2)}`);
+
+    }catch(e){
+      setStatus("Polling error", "bad");
+      logError(`Polling error: ${e.message}`);
+    } finally {
+      pollInFlight = false;
+    }
+  }
+
+  function stopPolling(){
+    if(pollTimer){
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function userStop(){
+    stopPolling();
+    setRunState(false);
+    setStatus("Stopped", "warn");
+    logWarn("Polling stopped (task may still be running on the server).");
+setProgress(0, "Polling stopped.");
+$("qEst").textContent = "—";
+
+  }
+
+  // ---------- Wire up ----------
+function init(){
+  // Set default baseUrl correctly BEFORE any API calls (models/health/etc)
+  const host = (window.location.hostname || "").toLowerCase();
+  const isXT = (host === "xtdevelopment.net" || host === "www.xtdevelopment.net");
+
+  const origin = String(window.location.origin || "").replace(/\/+$/, "");
+  const desiredDefault = isXT ? (origin + "/ace") : origin;
+
+  const baseEl = $("baseUrl");
+  const current = String(baseEl.value || "").trim().replace(/\/+$/, "");
+
+  // Only auto-fill if empty OR still the plain origin (so we don’t stomp user edits)
+  const plainOrigin = origin;
+  if (!current || current === plainOrigin) {
+    baseEl.value = desiredDefault;
+    baseEl.dispatchEvent(new Event("input", { bubbles: true }));
+    baseEl.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // Default download current disabled until something is loaded
+  $("downloadLink").addEventListener("click", (e) => {
+    if(!$("downloadLink").href || $("downloadLink").href.endsWith("#")){
+      e.preventDefault();
+    }
+  });
+
+  $("btnHealth").addEventListener("click", (e) => { e.preventDefault(); healthCheck(); });
+  $("btnModels").addEventListener("click", (e) => { e.preventDefault(); loadModels(); });
+  $("btnGenerate").addEventListener("click", (e) => { e.preventDefault(); submitTask(); });
+  $("btnStop").addEventListener("click", (e) => { e.preventDefault(); userStop(); });
+
+  $("btnShowAllSongs").addEventListener("click", (e) => { e.preventDefault(); showAllSongs(); });
+
+  $("player").addEventListener("ended", onPlayerEnded);
+
+  // NOW it’s safe to load models
+  loadModels();
+}
+
+  // expose for helper scripts (prev/next etc.)
+  try{
+    window.songs = songs;
+    window.loadIntoMainPlayer = loadIntoMainPlayer;
+    window.showSongMeta = showSongMeta;
+    window.songUrlToMeta = songUrlToMeta;
+  }catch{}
+
+  init();
+})();
+
+
+// Move ONLY <audio id="player"> into a fixed footer bar.
+// Footer is HIDDEN until a real song is loaded; shows when loaded; hides again if cleared.
+
+(() => {
+  "use strict";
+
+  const PLAYER_ID = "player";
+  const FOOTER_ID = "__player_footer__";
+  const INNER_ID = "__player_footer_inner__";
+  const STYLE_ID = "__player_footer_styles__";
+
+  function hasRealSrc(audio) {
+    if (!audio) return false;
+    const srcAttr = (audio.getAttribute("src") || "").trim();
+    const curSrc = (audio.currentSrc || "").trim();
+    const src = curSrc || srcAttr;
+    return !!src && src !== "#" && !src.endsWith("#");
+  }
+
+  function ensureStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      :root{ --player-footer-h: 64px; }
+
+      /* only add bottom padding when footer is visible */
+      body.__player_footer_on__{ padding-bottom: var(--player-footer-h); }
+
+      #${FOOTER_ID}{
+        position:fixed; left:0; right:0; bottom:0;
+        z-index: 999999;
+        background: rgba(8,10,16,.92);
+        border-top: 1px solid rgba(255,255,255,.10);
+        backdrop-filter: blur(10px);
+        display:none;
+      }
+      #${FOOTER_ID}.__show__{ display:block; }
+
+      #${INNER_ID}{
+        max-width:1100px;
+        margin:0 auto;
+        padding:10px 18px;
+      }
+      #${INNER_ID} > audio{
+        width:100%;
+        display:block;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureFooter() {
+    let foot = document.getElementById(FOOTER_ID);
+    if (foot) return foot;
+
+    ensureStyles();
+
+    foot = document.createElement("div");
+    foot.id = FOOTER_ID;
+
+    const inner = document.createElement("div");
+    inner.id = INNER_ID;
+    foot.appendChild(inner);
+
+    document.body.appendChild(foot);
+    return foot;
+  }
+
+  function setFooterVisible(vis) {
+    const foot = document.getElementById(FOOTER_ID);
+    if (!foot) return;
+    foot.classList.toggle("__show__", !!vis);
+    document.body.classList.toggle("__player_footer_on__", !!vis);
+  }
+
+  function moveOnlyPlayer() {
+    const player = document.getElementById(PLAYER_ID);
+    if (!player || player.tagName.toLowerCase() !== "audio") return null;
+
+    const foot = ensureFooter();
+    const inner = document.getElementById(INNER_ID);
+
+    // Move same node => playback continues
+    if (player.parentElement !== inner) inner.appendChild(player);
+
+    return player;
+  }
+
+  function bindVisibility(player) {
+    const update = () => setFooterVisible(hasRealSrc(player));
+
+    // initial
+    update();
+
+    // when src changes or media loads
+    player.addEventListener("loadstart", update);
+    player.addEventListener("loadedmetadata", update);
+    player.addEventListener("canplay", update);
+    player.addEventListener("emptied", update);
+
+    // attribute observer for src changes (player.src = ...)
+    const mo = new MutationObserver(update);
+    mo.observe(player, { attributes: true, attributeFilter: ["src"] });
+
+    // also poll currentSrc briefly (some browsers set it async)
+    let tries = 0;
+    const t = setInterval(() => {
+      update();
+      tries++;
+      if (tries > 40) clearInterval(t); // ~8s
+    }, 200);
+  }
+
+  function init() {
+    const player = moveOnlyPlayer();
+    if (!player) return false;
+    bindVisibility(player);
+    return true;
+  }
+
+  if (init()) return;
+
+  // wait until #player exists
+  const obs = new MutationObserver(() => {
+    if (init()) obs.disconnect();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+})();
+
+
+
+
+
+//add next back buttons
+// Adds Prev / Next buttons to the left/right of the <audio id="player"> element.
+// - Tries to use your existing playlist state if present (songs[] + loadIntoMainPlayer()).
+// - Fallback: clicks the previous/next Play link in #songList.
+// - Keyboard shortcuts: Shift+Left = Prev, Shift+Right = Next.
+
+(() => {
+  "use strict";
+
+  const PLAYER_ID = "player";
+  const SONG_LIST_ID = "songList";
+
+  const player = document.getElementById(PLAYER_ID);
+  if (!player) {
+    console.warn(`[prev/next] No audio#${PLAYER_ID} found.`);
+    return;
+  }
+
+  // --- helpers ---
+  function cssEscapeLite(s) {
+    // basic escape for attribute selectors
+    return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function getPlayLinksInDomOrder() {
+    const list = document.getElementById(SONG_LIST_ID);
+    if (!list) return [];
+    // rows were prepended (newest first). DOM order is newest->older.
+    // We find "Play" anchors inside each row.
+    return Array.from(list.querySelectorAll('a'))
+      .filter(a => (a.textContent || "").trim().toLowerCase() === "play");
+  }
+
+  function getCurrentIndexFromGlobals() {
+    // If your page keeps currentSongIndex global (not in an IIFE), use it.
+    // Otherwise returns null.
+    try {
+      if (typeof window.currentSongIndex === "number") return window.currentSongIndex;
+    } catch {}
+    return null;
+  }
+
+  function setCurrentIndexGlobal(i) {
+    try {
+      if (typeof window.currentSongIndex === "number") window.currentSongIndex = i;
+    } catch {}
+  }
+
+  function tryUseAppPlaylist(delta) {
+    // Best-case: you exposed songs + loadIntoMainPlayer on window.
+    // If not, this returns false and we fall back to DOM clicking.
+    const hasSongs = Array.isArray(window.songs);
+    const hasLoader = typeof window.loadIntoMainPlayer === "function";
+
+    if (!hasSongs || !hasLoader) return false;
+
+    let idx = getCurrentIndexFromGlobals();
+    if (idx == null) {
+      // try to locate by player src
+      const src = player.currentSrc || player.src || "";
+      idx = window.songs.findIndex(s => s && s.url === src);
+      if (idx < 0) idx = 0;
+    }
+
+    const next = idx + delta;
+    if (next < 0 || next >= window.songs.length) return true; // nothing to do but "handled"
+
+    window.loadIntoMainPlayer(next, true);
+    setCurrentIndexGlobal(next);
+    return true;
+  }
+
+  function clickDomPrevNext(delta) {
+    const plays = getPlayLinksInDomOrder();
+    if (!plays.length) return;
+
+    // Find current row by matching player's src to the Download link in that row, if possible.
+    const src = (player.currentSrc || player.src || "").trim();
+
+    let curRowIndex = -1;
+    if (src) {
+      // Each row has a Download link with href=url
+      const list = document.getElementById(SONG_LIST_ID);
+      const dl = list ? list.querySelector(`a[href="${cssEscapeLite(src)}"]`) : null;
+      if (dl) {
+        const row = dl.closest("[data-song-index]") || dl.closest("div");
+        if (row) {
+          // find the Play link inside this row in the plays array
+          const playInRow = row.querySelector("a") && Array.from(row.querySelectorAll("a"))
+            .find(a => (a.textContent || "").trim().toLowerCase() === "play");
+          if (playInRow) {
+            curRowIndex = plays.indexOf(playInRow);
+          }
+        }
+      }
+    }
+
+    // Fallback: if we can't detect, assume "newest" is current and step from there
+    if (curRowIndex < 0) curRowIndex = 0;
+
+    const nextRowIndex = curRowIndex + delta;
+    if (nextRowIndex < 0 || nextRowIndex >= plays.length) return;
+
+    plays[nextRowIndex].click();
+  }
+
+  function goPrev() {
+    // Newest-first list: "Prev" should go to newer (DOM earlier), "Next" goes older (DOM later).
+    // So delta = -1 goes newer, +1 goes older relative to DOM index.
+    if (tryUseAppPlaylist(-1)) return;
+    clickDomPrevNext(-1);
+  }
+
+  function goNext() {
+    if (tryUseAppPlaylist(+1)) return;
+    clickDomPrevNext(+1);
+  }
+
+  // --- UI injection ---
+  const wrap = document.createElement("div");
+  wrap.style.display = "flex";
+  wrap.style.alignItems = "center";
+  wrap.style.gap = "10px";
+  wrap.style.width = "100%";
+
+  const btnPrev = document.createElement("button");
+  btnPrev.type = "button";
+  btnPrev.textContent = "⟵";
+  btnPrev.title = "Previous track (Shift+Left)";
+  btnPrev.style.minWidth = "44px";
+  btnPrev.style.padding = "10px 12px";
+  btnPrev.style.borderRadius = "12px";
+  btnPrev.style.cursor = "pointer";
+
+  const btnNext = document.createElement("button");
+  btnNext.type = "button";
+  btnNext.textContent = "⟶";
+  btnNext.title = "Next track (Shift+Right)";
+  btnNext.style.minWidth = "44px";
+  btnNext.style.padding = "10px 12px";
+  btnNext.style.borderRadius = "12px";
+  btnNext.style.cursor = "pointer";
+
+  // Keep your existing CSS button styling if present
+  btnPrev.className = player.className ? "" : ""; // no-op, but safe
+  btnNext.className = player.className ? "" : "";
+
+  // Move player into wrapper with buttons
+  const parent = player.parentNode;
+  if (!parent) return;
+
+  // Replace player in-place with wrapper, then re-insert player inside wrapper
+  parent.insertBefore(wrap, player);
+  wrap.appendChild(btnPrev);
+  wrap.appendChild(player);
+  wrap.appendChild(btnNext);
+
+  // Make player flex nicely between buttons
+  player.style.flex = "1 1 auto";
+  player.style.width = "100%";
+
+  btnPrev.addEventListener("click", (e) => { e.preventDefault(); goNext(); });
+  btnNext.addEventListener("click", (e) => { e.preventDefault(); goPrev(); });
+
+  // Keyboard shortcuts
+  window.addEventListener("keydown", (e) => {
+    if (!e.shiftKey) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+  });
+
+  console.log("[prev/next] Added Prev/Next buttons around the media player.");
+})();
+
+//invert media player colors
+// Invert colors of the <audio id="player"> media controls.
+// NOTE: Most browsers render native audio controls outside the DOM,
+// so this may not affect the built-in controls everywhere.
+// It WILL invert the whole player element area where supported.
+
+(() => {
+  "use strict";
+
+  const player = document.getElementById("player");
+  if (!player) {
+    console.warn("[invert-player] audio#player not found.");
+    return;
+  }
+
+  // Toggle-safe: if already inverted, turn it off.
+  const already = player.dataset.inverted === "1";
+
+  if (already) {
+    player.style.filter = "";
+    player.style.webkitFilter = "";
+    delete player.dataset.inverted;
+    console.log("[invert-player] removed invert");
+    return;
+  }
+
+  // Invert + a tiny hue rotate helps keep it from looking "dirty" on some UIs
+  player.style.filter = "invert(1) hue-rotate(180deg)";
+  player.style.webkitFilter = "invert(1) hue-rotate(180deg)";
+  player.dataset.inverted = "1";
+
+  console.log("[invert-player] applied invert");
+})();
+
+
+// Clicks the "Check server" button 3 seconds after page load.
+
+(() => {
+  "use strict";
+
+  function clickHealth() {
+    const btn = document.getElementById("btnHealth");
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }
+
+  function scheduleClick() {
+    setTimeout(() => {
+      // try now
+      if (clickHealth()) return;
+
+      // if button isn't there yet, watch briefly until it appears
+      const obs = new MutationObserver(() => {
+        if (clickHealth()) obs.disconnect();
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+
+      setTimeout(() => obs.disconnect(), 10000);
+    }, 3000);
+  }
+
+  // If the page is already loaded, schedule immediately; else wait for load.
+  if (document.readyState === "complete") {
+    scheduleClick();
+  } else {
+    window.addEventListener("load", scheduleClick, { once: true });
+  }
+})();
+
+// Inject filename (without .mp3) as a line AFTER the caption and BEFORE the Play/Download buttons
+(() => {
+  "use strict";
+
+  const LIST_ID = "songList";
+  const MARK_CLASS = "__ncz_filename_line__";
+
+  const list = document.getElementById(LIST_ID);
+  if (!list) {
+    console.warn(`[ncz] #${LIST_ID} not found`);
+    return;
+  }
+
+  function extractBaseNameFromHref(href) {
+    try {
+      const u = new URL(href, window.location.origin);
+      const last = (u.pathname.split("/").filter(Boolean).pop() || "");
+      const decoded = decodeURIComponent(last);
+      return decoded.replace(/\.mp3$/i, "");
+    } catch {
+      const s = String(href || "");
+      const path = s.split("?")[0];
+      const last = (path.split("/").filter(Boolean).pop() || "");
+      try { return decodeURIComponent(last).replace(/\.mp3$/i, ""); }
+      catch { return last.replace(/\.mp3$/i, ""); }
+    }
+  }
+
+  function processRow(row) {
+    if (!row || row.nodeType !== 1) return;
+
+    // top is the first child div in the row (caption + buttons)
+    const top = row.firstElementChild;
+    if (!top) return;
+
+    // right container is the parent of the Play link
+    const playLink = Array.from(top.querySelectorAll("a"))
+      .find(a => (a.textContent || "").trim().toLowerCase() === "play");
+    if (!playLink) return;
+
+    const right = playLink.parentElement;
+    if (!right) return;
+
+    // find Download link to grab the href (the "file path")
+    const downloadLink = Array.from(right.querySelectorAll("a"))
+      .find(a => (a.textContent || "").trim().toLowerCase() === "download")
+      || Array.from(right.querySelectorAll("a")).find(a => a.hasAttribute("download"))
+      || null;
+
+    const href = (downloadLink && downloadLink.href) ? downloadLink.href : playLink.href;
+    if (!href) return;
+
+    const baseName = extractBaseNameFromHref(href);
+    if (!baseName) return;
+
+    // make top stack: caption line, filename line, then buttons line
+    top.style.display = "flex";
+    top.style.flexDirection = "column";
+    top.style.alignItems = "stretch";
+    top.style.gap = "6px";
+
+    // keep buttons on one line
+    right.style.display = "flex";
+    right.style.gap = "12px";
+    right.style.alignItems = "center";
+    right.style.justifyContent = "flex-start";
+
+    // locate existing filename line if any
+    let fileLine = top.querySelector(`.${MARK_CLASS}`);
+    if (!fileLine) {
+      fileLine = document.createElement("div");
+      fileLine.className = `small ${MARK_CLASS}`;
+      fileLine.style.fontFamily = "var(--mono)";
+      fileLine.style.opacity = "0.9";
+
+      // insert AFTER caption (which is the first "small" div in top) and BEFORE right/buttons
+      // easiest: insert before right, so order becomes: caption, filename, buttons
+      top.insertBefore(fileLine, right);
+    }
+
+    fileLine.textContent = baseName;
+  }
+
+  function processAll() {
+    const rows = list.querySelectorAll('[data-song-index]');
+    rows.forEach(processRow);
+  }
+
+  // Initial pass
+  processAll();
+
+  // Keep working as new songs are added (your code prepends rows)
+  const mo = new MutationObserver((mutList) => {
+    for (const m of mutList) {
+      for (const node of m.addedNodes) {
+        if (node && node.nodeType === 1) {
+          if (node.matches && node.matches('[data-song-index]')) processRow(node);
+          else {
+            const r = node.querySelector && node.querySelector('[data-song-index]');
+            if (r) processRow(r);
+          }
+        }
+      }
+    }
+  });
+  mo.observe(list, { childList: true, subtree: false });
+
+  console.log("[ncz] filename line injection enabled");
+})();
+
+// Adds a toggle button that collapses/uncollapses the Base URL + Auth + API Key block
+// Collapses by DEFAULT (unless user previously expanded and we saved it)
+(() => {
+  "use strict";
+
+  const BTN_ID = "__ncz_toggle_conn__";
+  const STORE_KEY = "NCZ_UI_CONN_COLLAPSED"; // "1" = collapsed, "0" = expanded
+
+  const baseUrl = document.getElementById("baseUrl");
+  const authMode = document.getElementById("authMode");
+  const apiKey = document.getElementById("apiKey");
+  if (!baseUrl || !authMode || !apiKey) {
+    console.warn("[ncz-collapse] Required fields not found (#baseUrl/#authMode/#apiKey).");
+    return;
+  }
+
+  const leftCol = baseUrl.closest("div");
+  const rightCol = authMode.closest("div");
+  const row = leftCol?.parentElement;
+
+  if (!leftCol || !rightCol || !row) {
+    console.warn("[ncz-collapse] Could not locate layout containers.");
+    return;
+  }
+
+  // Insert button into the left card header (Create a generation task)
+  const header = document.querySelector(".card .hd");
+  if (!header) {
+    console.warn("[ncz-collapse] Could not find card header.");
+    return;
+  }
+
+  if (document.getElementById(BTN_ID)) return;
+
+  // Styles
+  const STYLE_ID = "__ncz_toggle_conn_style__";
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      .__ncz_conn_hidden__ { display: none !important; }
+      #${BTN_ID}{
+        padding: 8px 10px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 12px;
+        background: rgba(255,255,255,.08);
+        color: var(--text);
+        cursor: pointer;
+      }
+      #${BTN_ID}:hover{ background: rgba(255,255,255,.12); }
+    `;
+    document.head.appendChild(st);
+  }
+
+  const btn = document.createElement("button");
+  btn.id = BTN_ID;
+  btn.type = "button";
+  btn.className = "secondary";
+  btn.title = "Hide/show Base URL + Auth + API key fields";
+
+  header.appendChild(btn);
+
+  function setCollapsed(collapsed) {
+    leftCol.classList.toggle("__ncz_conn_hidden__", collapsed);
+    rightCol.classList.toggle("__ncz_conn_hidden__", collapsed);
+    btn.textContent = collapsed ? "Expand connection" : "Collapse connection";
+    try { localStorage.setItem(STORE_KEY, collapsed ? "1" : "0"); } catch {}
+  }
+
+  // Default: COLLAPSED.
+  // If user has a saved preference, respect it.
+  let collapsed = true;
+  try {
+    const saved = localStorage.getItem(STORE_KEY);
+    if (saved === "0") collapsed = false;
+    if (saved === "1") collapsed = true;
+  } catch {}
+
+  setCollapsed(collapsed);
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    collapsed = !collapsed;
+    setCollapsed(collapsed);
+  });
+
+  console.log("[ncz-collapse] Connection toggle added (default collapsed).");
+})();
+
+
+
+//left panel
+// Left sidebar column (fixed) with collapse/expand arrow button.
+// CHANGE: when COLLAPSED, move the expand button BELOW the "Top" button;
+// when EXPANDED, move it back into the header.
+// Persists state in localStorage.
+(() => {
+  "use strict";
+
+  const SID_ID = "__ncz_leftbar__";
+  const STYLE_ID = "__ncz_leftbar_style__";
+  const STORE_KEY = "NCZ_UI_LEFTBAR_COLLAPSED";
+
+  const EXPANDED_W = 260; // px
+  const COLLAPSED_W = 56; // px
+
+  // ---------- Styles ----------
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      :root{
+        --ncz-leftbar-expanded: ${EXPANDED_W}px;
+        --ncz-leftbar-collapsed: ${COLLAPSED_W}px;
+        --ncz-leftbar-w: var(--ncz-leftbar-expanded);
+      }
+
+      body.__ncz_leftbar_on__{
+        padding-left: var(--ncz-leftbar-w);
+      }
+
+      #${SID_ID}{
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: var(--ncz-leftbar-w);
+        z-index: 999998;
+        background: rgba(8,10,16,.92);
+        border-right: 1px solid rgba(255,255,255,.10);
+        backdrop-filter: blur(10px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #${SID_ID} .__ncz_lb_header__{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: linear-gradient(180deg, rgba(18,23,38,.70), rgba(18,23,38,.15));
+      }
+
+      #${SID_ID} .__ncz_lb_brand__{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        min-width: 0;
+      }
+
+      #${SID_ID} .__ncz_lb_logo__{
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        background: rgba(106,166,255,.18);
+        border: 1px solid rgba(255,255,255,.10);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-family: var(--mono, ui-monospace);
+        font-weight: 800;
+        letter-spacing: .5px;
+        color: rgba(233,238,252,.95);
+        flex: 0 0 auto;
+      }
+
+      #${SID_ID} .__ncz_lb_title__{
+        font-size: 12px;
+        font-weight: 800;
+        color: rgba(233,238,252,.95);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #${SID_ID} .__ncz_lb_sub__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+      }
+
+      #${SID_ID} .__ncz_lb_toggle__{
+        border: 0;
+        background: rgba(255,255,255,.08);
+        color: rgba(233,238,252,.95);
+        padding: 8px 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 900;
+        line-height: 1;
+      }
+      #${SID_ID} .__ncz_lb_toggle__:hover{
+        background: rgba(255,255,255,.12);
+      }
+
+      #${SID_ID} .__ncz_lb_body__{
+        padding: 10px;
+        display:flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: auto;
+      }
+
+      #${SID_ID} .__ncz_lb_item__{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        padding: 10px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.20);
+        cursor: pointer;
+        user-select: none;
+      }
+      #${SID_ID} .__ncz_lb_item__:hover{
+        background: rgba(0,0,0,.30);
+        border-color: rgba(106,166,255,.25);
+      }
+      #${SID_ID} .__ncz_lb_icon__{
+        width: 28px;
+        height: 28px;
+        border-radius: 10px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background: rgba(106,166,255,.16);
+        border: 1px solid rgba(255,255,255,.10);
+        flex: 0 0 auto;
+        font-size: 14px;
+      }
+      #${SID_ID} .__ncz_lb_label__{
+        font-size: 12px;
+        font-weight: 800;
+        color: rgba(233,238,252,.95);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #${SID_ID} .__ncz_lb_hint__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Collapsed mode */
+      #${SID_ID}.__collapsed__{
+        --ncz-leftbar-w: var(--ncz-leftbar-collapsed);
+      }
+      #${SID_ID}.__collapsed__ .__ncz_lb_titlewrap__,
+      #${SID_ID}.__collapsed__ .__ncz_lb_labelwrap__{
+        display:none !important;
+      }
+      #${SID_ID}.__collapsed__ .__ncz_lb_body__{
+        padding: 10px 8px;
+      }
+      #${SID_ID}.__collapsed__ .__ncz_lb_item__{
+        justify-content:center;
+        padding: 10px 8px;
+      }
+
+      /* When toggle button is moved into body (collapsed), make it look like an icon item */
+      #${SID_ID}.__collapsed__ .__ncz_lb_toggle_in_body__{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap: 10px;
+        padding: 10px 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.20);
+        cursor: pointer;
+        user-select:none;
+      }
+      #${SID_ID}.__collapsed__ .__ncz_lb_toggle_in_body__:hover{
+        background: rgba(0,0,0,.30);
+        border-color: rgba(106,166,255,.25);
+      }
+
+      @media (max-width: 700px){
+        body.__ncz_leftbar_on__{ padding-left: 0 !important; }
+        #${SID_ID}{ box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  // ---------- Build or reuse sidebar ----------
+  let side = document.getElementById(SID_ID);
+  if (!side) {
+    side = document.createElement("aside");
+    side.id = SID_ID;
+    side.innerHTML = `
+      <div class="__ncz_lb_header__">
+        <div class="__ncz_lb_brand__">
+          <div class="__ncz_lb_logo__">NCZ</div>
+          <div class="__ncz_lb_titlewrap__" style="min-width:0">
+            <div class="__ncz_lb_title__">MEQUAVIS</div>
+            <div class="__ncz_lb_sub__">Controls</div>
+          </div>
+        </div>
+        <button class="__ncz_lb_toggle__" type="button" title="Collapse / Expand">⟵</button>
+      </div>
+
+      <div class="__ncz_lb_body__">
+        <div class="__ncz_lb_item__" data-action="generate" title="Generate">
+          <div class="__ncz_lb_icon__">▶</div>
+          <div class="__ncz_lb_labelwrap__" style="min-width:0">
+            <div class="__ncz_lb_label__">Generate</div>
+            <div class="__ncz_lb_hint__">Submit a job</div>
+          </div>
+        </div>
+
+        <div class="__ncz_lb_item__" data-action="songs" title="Show all songs">
+          <div class="__ncz_lb_icon__">🎵</div>
+          <div class="__ncz_lb_labelwrap__" style="min-width:0">
+            <div class="__ncz_lb_label__">Songs</div>
+            <div class="__ncz_lb_hint__">Fetch list</div>
+          </div>
+        </div>
+
+        <div class="__ncz_lb_item__" data-action="health" title="Check server">
+          <div class="__ncz_lb_icon__">❤</div>
+          <div class="__ncz_lb_labelwrap__" style="min-width:0">
+            <div class="__ncz_lb_label__">Health</div>
+            <div class="__ncz_lb_hint__">Ping server</div>
+          </div>
+        </div>
+
+        <div class="__ncz_lb_item__" data-action="top" title="Scroll to top">
+          <div class="__ncz_lb_icon__">↑</div>
+          <div class="__ncz_lb_labelwrap__" style="min-width:0">
+            <div class="__ncz_lb_label__">Top</div>
+            <div class="__ncz_lb_hint__">Jump up</div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(side);
+  }
+
+  document.body.classList.add("__ncz_leftbar_on__");
+
+  const header = side.querySelector(".__ncz_lb_header__");
+  const body = side.querySelector(".__ncz_lb_body__");
+  const toggleBtn = side.querySelector(".__ncz_lb_toggle__");
+  const topItem = side.querySelector('[data-action="top"]');
+
+  if (!header || !body || !toggleBtn || !topItem) {
+    console.warn("[ncz-leftbar] Missing required nodes, aborting.");
+    return;
+  }
+
+  // Make sure toggle button isn't double-bound
+  if (toggleBtn.dataset.__nczBound__ === "1") return;
+  toggleBtn.dataset.__nczBound__ = "1";
+
+  function placeToggle(collapsed) {
+    // Remove special body-toggle class first
+    toggleBtn.classList.remove("__ncz_lb_toggle_in_body__");
+
+    if (collapsed) {
+      // Move into body, BELOW the Top item
+      // (so order is ... Top, then Toggle)
+      toggleBtn.classList.add("__ncz_lb_toggle_in_body__");
+      toggleBtn.title = "Expand";
+      // Ensure it's after top item
+      body.insertBefore(toggleBtn, topItem.nextSibling);
+    } else {
+      // Move back into header (right side)
+      toggleBtn.title = "Collapse";
+      header.appendChild(toggleBtn);
+    }
+  }
+
+  function setCollapsed(collapsed) {
+    side.classList.toggle("__collapsed__", !!collapsed);
+    toggleBtn.textContent = collapsed ? "⟶" : "⟵";
+    placeToggle(!!collapsed);
+    try { localStorage.setItem(STORE_KEY, collapsed ? "1" : "0"); } catch {}
+  }
+
+  // Restore state (default expanded unless saved)
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(STORE_KEY) === "1"; } catch {}
+  setCollapsed(collapsed);
+
+  toggleBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    collapsed = !collapsed;
+    setCollapsed(collapsed);
+  });
+
+  // Optional wiring to your existing buttons (safe if they exist)
+  function clickIfExists(id){
+    const el = document.getElementById(id);
+    if (el) el.click();
+  }
+
+  side.addEventListener("click", (e) => {
+    const item = e.target.closest?.("[data-action]");
+    if (!item) return;
+    const act = item.getAttribute("data-action");
+    if (act === "generate") clickIfExists("btnGenerate");
+    if (act === "songs") clickIfExists("btnShowAllSongs");
+    if (act === "health") clickIfExists("btnHealth");
+    if (act === "top") window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  console.log("[ncz-leftbar] Sidebar added/updated (toggle moves under Top when collapsed).");
+})();
+
+
+//fix panel
+// Fix: when the left sidebar collapses, reclaim the freed space.
+// Behavior:
+// - If sidebar is overlapping content OR the page is already being "pushed" (padding-left > 0),
+//   then we force body padding-left to EXACT sidebar width (+ a small gap).
+// - If there’s no overlap AND no existing push, we leave layout alone (no extra margin).
+(() => {
+  "use strict";
+
+  const SID_ID = "__ncz_leftbar__";
+  const STYLE_ID = "__ncz_leftbar_reflow_style__";
+  const BODY_CLASS = "__ncz_leftbar_force__";
+  const VAR_NAME = "--ncz-leftbar-force-px";
+  const GAP = 10; // breathing room (px)
+
+  const side = document.getElementById(SID_ID);
+  if (!side) {
+    console.warn(`[ncz-reflow] sidebar #${SID_ID} not found`);
+    return;
+  }
+
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      body.${BODY_CLASS}{
+        padding-left: var(${VAR_NAME}, 0px) !important;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function getContentLeft() {
+    // main content anchor; pick first available
+    const header = document.querySelector("header");
+    const main = document.querySelector("main");
+    const el = header || main || document.body;
+    return el.getBoundingClientRect().left;
+  }
+
+  function pxNum(v) {
+    const n = parseFloat(String(v || "0"));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function isOverlapping() {
+    const sideRect = side.getBoundingClientRect();
+    const contentLeft = getContentLeft();
+    return (sideRect.right - contentLeft) > 2;
+  }
+
+  function update() {
+    const sideW = Math.round(side.getBoundingClientRect().width || 0);
+    if (sideW <= 0) {
+      document.body.classList.remove(BODY_CLASS);
+      document.documentElement.style.removeProperty(VAR_NAME);
+      return;
+    }
+
+    const desired = Math.max(0, sideW + GAP);
+    const compPad = pxNum(getComputedStyle(document.body).paddingLeft);
+
+    // Force padding if:
+    // 1) sidebar overlaps content, OR
+    // 2) the page is already padded (from earlier sidebar CSS) -> keep it in sync with current sidebar width
+    const shouldForce = isOverlapping() || compPad > 0.5;
+
+    if (shouldForce) {
+      document.documentElement.style.setProperty(VAR_NAME, desired + "px");
+      document.body.classList.add(BODY_CLASS);
+    } else {
+      document.body.classList.remove(BODY_CLASS);
+      document.documentElement.style.removeProperty(VAR_NAME);
+    }
+  }
+
+  // initial
+  update();
+
+  // update on window resize
+  window.addEventListener("resize", update, { passive: true });
+
+  // update when sidebar collapses/expands (class/style changes)
+  new MutationObserver(update).observe(side, { attributes: true, attributeFilter: ["class", "style"] });
+
+  // resize observer (best)
+  if ("ResizeObserver" in window) {
+    const ro = new ResizeObserver(update);
+    ro.observe(side);
+    const header = document.querySelector("header");
+    const main = document.querySelector("main");
+    if (header) ro.observe(header);
+    if (main) ro.observe(main);
+  }
+
+  console.log("[ncz-reflow] enabled (collapse reclaims space)");
+})();
+
+
+
+
+
+// Right info panel (fixed) with collapse/expand.
+// CHANGE: starts COLLAPSED by default.
+// CHANGE: when COLLAPSED, move toggle button UNDER the icon (inside brand area);
+// when EXPANDED, move it back to the far right of the header.
+(() => {
+  "use strict";
+
+  const PANEL_ID = "__ncz_right_info__";
+  const STYLE_ID = "__ncz_right_info_style__";
+  const STORE_KEY = "NCZ_UI_RIGHTINFO_COLLAPSED";
+
+  const EXPANDED_W = 320;  // px
+  const COLLAPSED_W = 56;  // px
+  const GAP = 12;
+
+  // If panel exists already, we won't duplicate; but we will try to rewire behavior if possible.
+  let panel = document.getElementById(PANEL_ID);
+
+  // ---------- Styles ----------
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      :root{
+        --ncz-rightinfo-expanded: ${EXPANDED_W}px;
+        --ncz-rightinfo-collapsed: ${COLLAPSED_W}px;
+        --ncz-rightinfo-w: var(--ncz-rightinfo-expanded);
+      }
+
+      body.__ncz_rightinfo_on__{
+        padding-right: calc(var(--ncz-rightinfo-w) + ${GAP}px);
+      }
+
+      #${PANEL_ID}{
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: var(--ncz-rightinfo-w);
+        z-index: 999997;
+        background: rgba(8,10,16,.92);
+        border-left: 1px solid rgba(255,255,255,.10);
+        backdrop-filter: blur(10px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #${PANEL_ID} .__hd__{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: linear-gradient(180deg, rgba(18,23,38,.70), rgba(18,23,38,.15));
+      }
+
+      #${PANEL_ID} .__brand__{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        min-width: 0;
+      }
+
+      #${PANEL_ID} .__brandcol__{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        gap:8px;
+        flex: 0 0 auto;
+      }
+
+      #${PANEL_ID} .__logo__{
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        background: rgba(75,227,138,.14);
+        border: 1px solid rgba(255,255,255,.10);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-family: var(--mono, ui-monospace);
+        font-weight: 900;
+        letter-spacing: .5px;
+        color: rgba(233,238,252,.95);
+      }
+
+      #${PANEL_ID} .__titlewrap__{ min-width:0; }
+      #${PANEL_ID} .__title__{
+        font-size: 12px;
+        font-weight: 900;
+        color: rgba(233,238,252,.95);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #${PANEL_ID} .__sub__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+      }
+
+      #${PANEL_ID} .__toggle__{
+        border: 0;
+        background: rgba(255,255,255,.08);
+        color: rgba(233,238,252,.95);
+        padding: 8px 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 900;
+        line-height: 1;
+      }
+      #${PANEL_ID} .__toggle__:hover{ background: rgba(255,255,255,.12); }
+
+      #${PANEL_ID} .__body__{
+        padding: 12px;
+        overflow: auto;
+        display:flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      #${PANEL_ID} .__card__{
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.20);
+        border-radius: 12px;
+        padding: 10px 10px;
+      }
+
+      #${PANEL_ID} .__h__{
+        font-size: 12px;
+        font-weight: 900;
+        margin: 0 0 6px;
+        color: rgba(233,238,252,.95);
+      }
+
+      #${PANEL_ID} .__p__{
+        font-size: 12px;
+        line-height: 1.35;
+        color: rgba(169,179,207,.95);
+        margin: 0;
+        white-space: pre-wrap;
+      }
+
+      #${PANEL_ID} .__mono__{ font-family: var(--mono, ui-monospace); }
+
+      /* Collapsed mode */
+      #${PANEL_ID}.__collapsed__{
+        --ncz-rightinfo-w: var(--ncz-rightinfo-collapsed);
+      }
+      #${PANEL_ID}.__collapsed__ .__titlewrap__,
+      #${PANEL_ID}.__collapsed__ .__body__{
+        display:none !important;
+      }
+
+      /* When toggle is moved into brand column (collapsed), make it compact */
+      #${PANEL_ID}.__collapsed__ .__toggle__{
+        padding: 8px 10px;
+        width: 40px;
+        text-align:center;
+      }
+
+      @media (max-width: 900px){
+        body.__ncz_rightinfo_on__{ padding-right: 0 !important; }
+        #${PANEL_ID}{ box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  // ---------- Build panel (if missing) ----------
+  if (!panel) {
+    panel = document.createElement("aside");
+    panel.id = PANEL_ID;
+
+    panel.innerHTML = `
+      <div class="__hd__">
+        <div class="__brand__">
+          <div class="__brandcol__">
+            <div class="__logo__">i</div>
+            <!-- toggle can be moved here when collapsed -->
+          </div>
+          <div class="__titlewrap__">
+            <div class="__title__">NanoCheeZe MEQUAVIS</div>
+            <div class="__sub__">Page/Song Info</div>
+          </div>
+        </div>
+        <button class="__toggle__" type="button" title="Collapse / Expand">⟶</button>
+      </div>
+
+      <div class="__body__">
+       
+
+        <div class="__card__">
+          <div class="__h__">Lyrics / Meta (placeholder)</div>
+          <p class="__p__">
+<img
+  id="__ncz_legacy_placeholder_img__"
+  src="https://info.nanocheeze.com/images/ncz.png"
+  style="display:block;margin:0 auto;max-width:100%;height:auto;"
+>
+          </p>
+        </div>
+
+        <div class="__card__">
+          <div class="__h__">Tips</div>
+          <p class="__p__">
+Keep prompts short + specific. Put structure in lyrics using [Verse] headers.
+          </p>
+        </div>
+
+
+ <div class="__card__">
+          <div class="__h__">Quick start</div>
+          <p class="__p__">
+1) Enter a style prompt (caption) and/or lyrics.
+2) Click Generate.
+3) Outputs append to the Song List when ready.
+4) Use the footer player to listen while browsing.
+          </p>
+        </div>
+
+        <div class="__card__">
+          <div class="__h__">Song list behavior</div>
+          <p class="__p__">
+• Newest items appear at the top.
+• Each row shows: caption + filename id.
+• “Show all songs” pulls the proxy’s /songs list.
+          </p>
+        </div>
+
+      </div><br /><br /><br /><br />
+    `;
+
+    document.body.appendChild(panel);
+  }
+
+  document.body.classList.add("__ncz_rightinfo_on__");
+
+  const header = panel.querySelector(".__hd__");
+  const brandCol = panel.querySelector(".__brandcol__");
+  const toggleBtn = panel.querySelector(".__toggle__");
+  const titleWrap = panel.querySelector(".__titlewrap__");
+
+  if (!header || !brandCol || !toggleBtn || !titleWrap) {
+    console.warn("[ncz-rightinfo] missing required nodes, aborting");
+    return;
+  }
+
+  // Prevent double binding
+  if (toggleBtn.dataset.__nczBound__ === "1") return;
+  toggleBtn.dataset.__nczBound__ = "1";
+
+  function placeToggle(collapsed) {
+    if (collapsed) {
+      // move under icon
+      brandCol.appendChild(toggleBtn);
+    } else {
+      // move back to far right of header
+      header.appendChild(toggleBtn);
+    }
+  }
+
+  function setCollapsed(collapsed) {
+    panel.classList.toggle("__collapsed__", !!collapsed);
+    toggleBtn.textContent = collapsed ? "⟵" : "⟶";
+    toggleBtn.title = collapsed ? "Expand" : "Collapse";
+    placeToggle(!!collapsed);
+    try { localStorage.setItem(STORE_KEY, collapsed ? "1" : "0"); } catch {}
+  }
+
+  // START COLLAPSED by default (unless user already saved an explicit preference)
+  let collapsed = true;
+  try {
+    const saved = localStorage.getItem(STORE_KEY);
+    if (saved === "0") collapsed = false;
+    if (saved === "1") collapsed = true;
+  } catch {}
+
+  setCollapsed(collapsed);
+
+  toggleBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    collapsed = !collapsed;
+    setCollapsed(collapsed);
+  });
+
+  console.log("[ncz-rightinfo] right info panel updated (starts collapsed, toggle moves under icon when collapsed)");
+})();
+
+
+
+
+
+// RIGHT PANEL PUSH (stable, no ping-pong with left panel)
+// Drop-in replacement for your current right-panel overlap script.
+//
+// Fixes the oscillation by:
+// 1) Using "would-overlap-without-our-own-padding" math (approx) so it doesn't self-cancel
+// 2) Adding hysteresis so it doesn't flap on the boundary
+// 3) requestAnimationFrame scheduling to avoid thrash
+//
+// Paste AFTER your right-panel script (or replace the old right push script entirely).
+(() => {
+  "use strict";
+
+  const PANEL_ID = "__ncz_right_info__";
+  const STYLE_ID = "__ncz_rightinfo_overlap_push_style__";
+  const BODY_CLASS = "__ncz_rightinfo_overlap_push__";
+  const VAR_NAME = "--ncz-rightinfo-overlap-push";
+
+  const GAP = 12;            // breathing room
+  const TOL = 2;             // overlap threshold px
+  const HYST = 24;           // hysteresis px (prevents flapping)
+  const MOBILE_CUTOFF = 900; // match your intent
+
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel) {
+    console.warn(`[ncz-rightinfo-overlap] #${PANEL_ID} not found`);
+    return;
+  }
+
+  // Remove the old always-on padding behavior from earlier panel script
+  document.body.classList.remove("__ncz_rightinfo_on__");
+
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      body.${BODY_CLASS}{
+        padding-right: var(${VAR_NAME}, 0px) !important;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  let currentPush = 0;
+
+  function pxNum(v){
+    const n = parseFloat(String(v || "0"));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function readCurrentPushFromCss(){
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(VAR_NAME);
+    const n = pxNum(raw);
+    if (n > 0) currentPush = n;
+  }
+
+  function setPush(px) {
+    const v = Math.max(0, Math.round(px));
+    currentPush = v;
+    document.documentElement.style.setProperty(VAR_NAME, v + "px");
+    document.body.classList.toggle(BODY_CLASS, v > 0);
+  }
+
+  function getContentRightNoSelfPush() {
+    // We want an estimate of where the content's RIGHT edge would be
+    // if *our* padding-right were 0, without actually toggling it.
+    //
+    // When content is centered within padded area, removing padding-right shifts it right ~push/2.
+    // When content is constrained (full width), removing padding-right shifts it right ~push.
+    //
+    // We'll compute per element and take the max.
+    const header = document.querySelector("header");
+    const main = document.querySelector("main");
+
+    const els = [];
+    if (header) els.push(header);
+    if (main) els.push(main);
+    if (!els.length) els.push(document.body);
+
+    // Body padding-left may be from your LEFT panel script; keep it.
+    const bodyCS = getComputedStyle(document.body);
+    const padL = pxNum(bodyCS.paddingLeft);
+
+    // IMPORTANT: use *our* push value (currentPush), not computed padding-right (could include other stuff)
+    const padR = currentPush;
+
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const avail = Math.max(0, vw - padL - padR);
+
+    let best = 0;
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      const w = r.width || 0;
+
+      // If element is noticeably narrower than available space, it's centered -> ~padR/2 shift when removing padR.
+      // If it's basically filling available space, it's constrained -> ~padR shift.
+      const centered = (avail - w) > 2;
+      const delta = centered ? (padR * 0.5) : padR;
+
+      best = Math.max(best, r.right + delta);
+    }
+    return best;
+  }
+
+  function updateNow() {
+    // On small screens don’t steal width
+    if (window.innerWidth < MOBILE_CUTOFF) {
+      setPush(0);
+      return;
+    }
+
+    const p = panel.getBoundingClientRect();
+    const contentRightNoPush = getContentRightNoSelfPush();
+
+    // overlap if (contentRight would be) beyond the panel's left edge
+    const overlapPx = contentRightNoPush - p.left;
+
+    const wantPush = Math.round((p.width || 0) + GAP);
+
+    if (overlapPx > TOL) {
+      // definitely overlapping without our push -> push ON (match current width)
+      setPush(wantPush);
+    } else {
+      // not overlapping without our push
+      if (currentPush > 0) {
+        // hysteresis: keep it on until we're safely away from the boundary
+        if (overlapPx > -HYST) {
+          setPush(wantPush); // keep synced to current panel width (collapsed/expanded)
+        } else {
+          setPush(0);        // safely clear
+        }
+      } else {
+        setPush(0);
+      }
+    }
+  }
+
+  // RAF scheduler to avoid reflow thrash
+  let rafPending = false;
+  function scheduleUpdate(){
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      updateNow();
+    });
+  }
+
+  // Init: pick up any existing var value (if old script ran first)
+  readCurrentPushFromCss();
+  scheduleUpdate();
+
+  window.addEventListener("resize", scheduleUpdate, { passive: true });
+
+  // Panel collapses/expands
+  new MutationObserver(scheduleUpdate).observe(panel, { attributes: true, attributeFilter: ["class", "style"] });
+
+  // Best: resize observer
+  if ("ResizeObserver" in window) {
+    const ro = new ResizeObserver(scheduleUpdate);
+    ro.observe(panel);
+    const header = document.querySelector("header");
+    const main = document.querySelector("main");
+    if (header) ro.observe(header);
+    if (main) ro.observe(main);
+  }
+
+  console.log("[ncz-rightinfo-overlap] enabled (stable, no ping-pong, width-synced)");
+})();
+
+
+
+
+
+
+// Make the RIGHT info panel resizable by dragging its LEFT border.
+// - Drag the left edge to resize.
+// - Double-click the handle to reset to default width.
+// - Persists width in localStorage.
+// - Updates panel width via CSS var --ncz-rightinfo-expanded (works with your collapse behavior).
+(() => {
+  "use strict";
+
+  const PANEL_ID = "__ncz_right_info__";
+  const STORE_KEY = "NCZ_UI_RIGHTINFO_WIDTH_PX";
+  const DEFAULT_W = 320;
+
+  const MIN_W = 220;
+  const MAX_W = 720;
+
+  const HANDLE_W = 10; // px grab zone
+  const Z = 9999999;
+
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel) {
+    console.warn(`[ncz-right-resize] #${PANEL_ID} not found`);
+    return;
+  }
+
+  // Ensure the CSS variable exists; your panel uses --ncz-rightinfo-expanded in :root
+  function setWidth(px) {
+    const w = Math.max(MIN_W, Math.min(MAX_W, Math.round(px)));
+    document.documentElement.style.setProperty("--ncz-rightinfo-expanded", w + "px");
+    try { localStorage.setItem(STORE_KEY, String(w)); } catch {}
+    return w;
+  }
+
+  function getSavedWidth() {
+    try {
+      const v = Number(localStorage.getItem(STORE_KEY));
+      return Number.isFinite(v) ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Apply saved width on load
+  const saved = getSavedWidth();
+  if (saved != null) setWidth(saved);
+
+  // Create draggable handle
+  const handle = document.createElement("div");
+  handle.id = "__ncz_right_resize_handle__";
+  handle.title = "Drag to resize • Double-click to reset";
+  handle.style.position = "absolute";
+  handle.style.left = "0";
+  handle.style.top = "0";
+  handle.style.bottom = "0";
+  handle.style.width = HANDLE_W + "px";
+  handle.style.cursor = "ew-resize";
+  handle.style.zIndex = String(Z);
+  handle.style.background = "transparent"; // grab zone only
+
+  // Optional visual line inside handle (so you can see it)
+  const line = document.createElement("div");
+  line.style.position = "absolute";
+  line.style.left = (HANDLE_W - 2) + "px";
+  line.style.top = "0";
+  line.style.bottom = "0";
+  line.style.width = "2px";
+  line.style.background = "rgba(255,255,255,.10)";
+  line.style.pointerEvents = "none";
+  handle.appendChild(line);
+
+  // Ensure panel is positioned so absolute handle works
+  const cs = getComputedStyle(panel);
+  if (cs.position === "static") panel.style.position = "fixed"; // should already be fixed
+  panel.style.userSelect = "none"; // during drag we’ll toggle selection anyway
+
+  panel.appendChild(handle);
+
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  function onDown(e) {
+    // Only left click / primary pointer
+    if (e.button != null && e.button !== 0) return;
+
+    dragging = true;
+    startX = e.clientX;
+    startW = panel.getBoundingClientRect().width;
+
+    document.documentElement.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("mouseup", onUp, true);
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const dx = startX - e.clientX; // moving mouse left increases width
+    const next = startW + dx;
+    setWidth(next);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onUp(e) {
+    if (!dragging) return;
+    dragging = false;
+
+    document.documentElement.style.cursor = "";
+    document.body.style.userSelect = "";
+
+    window.removeEventListener("mousemove", onMove, true);
+    window.removeEventListener("mouseup", onUp, true);
+
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onDblClick(e) {
+    setWidth(DEFAULT_W);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // Touch/pointer friendly
+  handle.addEventListener("mousedown", onDown, true);
+  handle.addEventListener("dblclick", onDblClick, true);
+
+  console.log("[ncz-right-resize] enabled (drag panel left edge to resize)");
+})();
+
+
+//button
+// Adds an "Autogen" button.
+// Behavior:
+// - On click: if Style Prompt (caption) has text, clears Lyrics box, enables autogen loop.
+// - Autogen loop: every 10s, if Generate button exists and is NOT disabled, clicks it.
+// - Only runs while enabled; click again to stop.
+// - Persists enabled/disabled in localStorage.
+(() => {
+  "use strict";
+
+  const STORE_KEY = "NCZ_AUTOGEN_ENABLED";
+  const INTERVAL_MS = 10_000;
+
+  // IDs from your page
+  const ID_PROMPT = "prompt";
+  const ID_LYRICS = "lyrics";
+  const ID_GENERATE = "btnGenerate";
+  const BTN_ID = "__ncz_autogen_btn__";
+
+  function $(id){ return document.getElementById(id); }
+
+  function hasPromptText(){
+    const el = $(ID_PROMPT);
+    return !!el && String(el.value || "").trim().length > 0;
+  }
+
+  function setLyricsEmpty(){
+    const el = $(ID_LYRICS);
+    if (!el) return;
+    el.value = "";
+    // trigger listeners if any
+    el.dispatchEvent(new Event("input", { bubbles:true }));
+    el.dispatchEvent(new Event("change", { bubbles:true }));
+  }
+
+  function canClickGenerate(){
+    const btn = $(ID_GENERATE);
+    return !!btn && !btn.disabled;
+  }
+
+  function clickGenerate(){
+    const btn = $(ID_GENERATE);
+    if (!btn) return false;
+    if (btn.disabled) return false;
+    btn.click();
+    return true;
+  }
+
+  function setBtnState(btn, on){
+    btn.dataset.on = on ? "1" : "0";
+    btn.textContent = on ? "Autogen: ON" : "Autogen";
+    btn.style.opacity = on ? "1" : "0.9";
+    btn.style.background = on ? "rgba(75,227,138,.18)" : "rgba(255,255,255,.08)";
+    btn.style.border = "1px solid rgba(255,255,255,.10)";
+  }
+
+  // Create button, try to put it near your existing controls row
+  function ensureButton(){
+    let btn = document.getElementById(BTN_ID);
+    if (btn) return btn;
+
+    btn = document.createElement("button");
+    btn.id = BTN_ID;
+    btn.type = "button";
+    btn.textContent = "Autogen";
+    btn.title = "Clears lyrics and auto-clicks Generate every 10s when enabled";
+
+    // Match your button styling a bit
+    btn.style.borderRadius = "12px";
+    btn.style.padding = "10px 12px";
+    btn.style.fontWeight = "800";
+    btn.style.cursor = "pointer";
+
+    // Insert into the .btnrow if present, else stick in header
+    const btnRow = document.querySelector(".btnrow");
+    if (btnRow) {
+      btnRow.appendChild(btn);
+    } else {
+      (document.body || document.documentElement).appendChild(btn);
+      btn.style.position = "fixed";
+      btn.style.right = "16px";
+      btn.style.bottom = "90px";
+      btn.style.zIndex = "999999";
+    }
+
+    return btn;
+  }
+
+  let timer = null;
+  let enabled = false;
+
+  function stop(){
+    enabled = false;
+    try{ localStorage.setItem(STORE_KEY, "0"); }catch{}
+    if (timer) { clearInterval(timer); timer = null; }
+    const btn = ensureButton();
+    setBtnState(btn, false);
+  }
+
+  function start(){
+    enabled = true;
+    try{ localStorage.setItem(STORE_KEY, "1"); }catch{}
+    const btn = ensureButton();
+    setBtnState(btn, true);
+
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => {
+      // Only click if prompt has text (your rule)
+      if (!hasPromptText()) return;
+
+      // Click Generate if it isn't disabled
+      if (canClickGenerate()) {
+        clickGenerate();
+      }
+    }, INTERVAL_MS);
+  }
+
+  function toggle(){
+    if (enabled) return stop();
+
+    // Only allow enabling if prompt has text
+    if (!hasPromptText()){
+      // quick visual nudge
+      const btn = ensureButton();
+      btn.textContent = "Autogen (need prompt)";
+      setTimeout(() => setBtnState(btn, false), 1200);
+      return;
+    }
+
+    // Clear lyrics on enable (your rule)
+    setLyricsEmpty();
+    start();
+
+    // Also attempt an immediate click (optional but useful)
+    if (canClickGenerate()) clickGenerate();
+  }
+
+  // Init
+  const btn = ensureButton();
+  btn.addEventListener("click", (e) => { e.preventDefault(); toggle(); });
+
+  // restore state
+  try{
+    enabled = localStorage.getItem(STORE_KEY) === "1";
+  }catch{ enabled = false; }
+
+  if (enabled) {
+    // If restored ON but prompt is empty, force OFF (your rule)
+    if (!hasPromptText()) {
+      stop();
+    } else {
+      // Clear lyrics once on restore too
+      setLyricsEmpty();
+      start();
+    }
+  } else {
+    stop();
+  }
+
+  console.log("[ncz-autogen] ready");
+})();
+
+
+
+
+
+
+// Move (or create) the "Make Lyrics" button so it's NEXT TO the Lyrics label.
+// - If your previous Make Lyrics button exists, it gets moved.
+// - Otherwise it creates a new one.
+// No behavior yet.
+(() => {
+  "use strict";
+
+  const BTN_ID = "__ncz_make_lyrics_btn__";
+  const LYRICS_ID = "lyrics";
+
+  function ensureBtn(){
+    let btn = document.getElementById(BTN_ID);
+    if (btn) return btn;
+
+    btn = document.createElement("button");
+    btn.id = BTN_ID;
+    btn.type = "button";
+    btn.textContent = "Make Lyrics";
+    btn.title = "Generate lyrics (placeholder)";
+
+    // match your button look
+    btn.style.border = "0";
+    btn.style.background = "rgba(255,255,255,.08)";
+    btn.style.color = "var(--text)";
+    btn.style.padding = "8px 10px";
+    btn.style.borderRadius = "12px";
+    btn.style.cursor = "pointer";
+    btn.style.fontWeight = "700";
+    btn.style.fontSize = "12px";
+    btn.addEventListener("mouseenter", () => btn.style.background = "rgba(255,255,255,.12)");
+    btn.addEventListener("mouseleave", () => btn.style.background = "rgba(255,255,255,.08)");
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      console.log("[ncz-make-lyrics] clicked (no behavior yet)");
+    });
+
+    return btn;
+  }
+
+  const lyrics = document.getElementById(LYRICS_ID);
+  if (!lyrics) {
+    console.warn("[ncz-move-make-lyrics] #lyrics not found");
+    return;
+  }
+
+  // Find the existing label for lyrics
+  const label = document.querySelector(`label[for="${LYRICS_ID}"]`);
+  if (!label) {
+    console.warn('[ncz-move-make-lyrics] label[for="lyrics"] not found');
+    return;
+  }
+
+  // Wrap label + button in a row
+  const row = document.createElement("div");
+  row.id = "__ncz_lyrics_label_row__";
+  row.style.display = "flex";
+  row.style.alignItems = "center";
+  row.style.justifyContent = "space-between";
+  row.style.gap = "10px";
+  row.style.margin = "10px 0 6px";
+
+  // Preserve the label's current spacing behavior
+  label.style.margin = "0";
+  label.style.flex = "1 1 auto";
+
+  const btn = ensureBtn();
+  btn.style.flex = "0 0 auto";
+
+  // Replace label with row containing label + button
+  const parent = label.parentNode;
+  parent.insertBefore(row, label);
+  row.appendChild(label);
+  row.appendChild(btn);
+
+  console.log("[ncz-move-make-lyrics] Make Lyrics button placed next to Lyrics label");
+})();
+
+
+
+
+
+// Adds the "Song Title" input ABOVE the Style Prompt.
+// (This is just the title field piece.)
+(() => {
+  "use strict";
+
+  const WRAP_ID = "__ncz_songtitle_wrap__";
+  const INPUT_ID = "__ncz_songtitle_input__";
+  const PROMPT_ID = "prompt";
+
+  const promptEl = document.getElementById(PROMPT_ID);
+  if (!promptEl) {
+    console.warn("[ncz-songtitle] #prompt not found");
+    return;
+  }
+
+  // Don't duplicate
+  if (document.getElementById(WRAP_ID)) return;
+
+  const promptLabel = document.querySelector('label[for="prompt"]');
+  const anchor = promptLabel || promptEl;
+
+  const wrap = document.createElement("div");
+  wrap.id = WRAP_ID;
+  wrap.style.margin = "10px 0 10px";
+
+  const lab = document.createElement("label");
+  lab.textContent = "Song Title";
+  lab.style.display = "block";
+  lab.style.fontSize = "12px";
+  lab.style.color = "var(--muted)";
+  lab.style.margin = "0 0 6px";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.id = INPUT_ID;
+  input.placeholder = "e.g., I Think I'm In Love With Ace (Optional)";
+  input.autocomplete = "off";
+
+  // Match your existing input styling
+  input.style.width = "100%";
+  input.style.background = "rgba(7,10,18,.65)";
+  input.style.color = "var(--text)";
+  input.style.border = "1px solid rgba(255,255,255,.10)";
+  input.style.borderRadius = "12px";
+  input.style.padding = "10px 10px";
+  input.style.fontSize = "13px";
+  input.style.outline = "none";
+
+  wrap.appendChild(lab);
+  wrap.appendChild(input);
+
+  anchor.parentNode.insertBefore(wrap, anchor);
+
+  console.log("[ncz-songtitle] added Song Title input above Style Prompt");
+})();
+
+
+// Disable the "Make Lyrics" button (and keep it disabled).
+(() => {
+  "use strict";
+
+  const BTN_ID = "__ncz_make_lyrics_btn__";
+
+  function disableBtn() {
+    const btn = document.getElementById(BTN_ID);
+    if (!btn) return false;
+
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+    btn.style.cursor = "not-allowed";
+    btn.title = "Coming soon";
+
+    return true;
+  }
+
+  // try now
+  if (disableBtn()) return;
+
+  // if it loads later, watch briefly
+  const obs = new MutationObserver(() => {
+    if (disableBtn()) obs.disconnect();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  setTimeout(() => obs.disconnect(), 15000);
+})();
+
+
+
+
+
+
+// Adds an "Author" input next to the Style Prompt label, plus a disabled "Signature" button after it.
+(() => {
+  "use strict";
+
+  const PROMPT_FOR = "prompt";
+  const ROW_ID = "__ncz_prompt_label_row__";
+  const AUTHOR_ID = "__ncz_author_input__";
+  const SIGN_ID = "__ncz_signature_btn__";
+
+  const label = document.querySelector(`label[for="${PROMPT_FOR}"]`);
+  const prompt = document.getElementById(PROMPT_FOR);
+
+  if (!label || !prompt) {
+    console.warn('[ncz-author-ui] label[for="prompt"] or #prompt not found');
+    return;
+  }
+
+  // Build (or reuse) row wrapper
+  let row = document.getElementById(ROW_ID);
+  if (!row) {
+    row = document.createElement("div");
+    row.id = ROW_ID;
+    row.style.display = "flex";
+    row.style.alignItems = "center";
+    row.style.justifyContent = "space-between";
+    row.style.gap = "10px";
+    row.style.flexWrap = "wrap";
+    row.style.margin = "10px 0 6px";
+
+    // Replace label in DOM with row, then insert label into row
+    const parent = label.parentNode;
+    parent.insertBefore(row, label);
+    row.appendChild(label);
+
+    // reset label margin so row controls spacing
+    label.style.margin = "0";
+  } else {
+    // If row exists but label isn't inside it, move label in
+    if (!row.contains(label)) {
+      row.insertBefore(label, row.firstChild);
+      label.style.margin = "0";
+    }
+  }
+
+  // If already added, don't duplicate
+  if (document.getElementById(AUTHOR_ID)) return;
+
+  // Right-side controls container
+  const controls = document.createElement("div");
+  controls.id = "__ncz_prompt_controls__";
+  controls.style.display = "flex";
+  controls.style.alignItems = "center";
+  controls.style.gap = "10px";
+  controls.style.flex = "0 0 auto";
+
+  // Author input (compact)
+  const author = document.createElement("input");
+  author.type = "text";
+  author.id = AUTHOR_ID;
+  author.placeholder = "Author";
+  author.autocomplete = "off";
+
+  author.style.width = "220px";
+  author.style.maxWidth = "60vw";
+  author.style.background = "rgba(7,10,18,.65)";
+  author.style.color = "var(--text)";
+  author.style.border = "1px solid rgba(255,255,255,.10)";
+  author.style.borderRadius = "12px";
+  author.style.padding = "8px 10px";
+  author.style.fontSize = "12px";
+  author.style.outline = "none";
+
+  // Signature button (disabled)
+  const sig = document.createElement("button");
+  sig.type = "button";
+  sig.id = SIGN_ID;
+  sig.textContent = "Signature";
+  sig.disabled = true;
+  sig.title = "Coming soon";
+
+  sig.style.border = "0";
+  sig.style.background = "rgba(255,255,255,.08)";
+  sig.style.color = "var(--text)";
+  sig.style.padding = "8px 10px";
+  sig.style.borderRadius = "12px";
+  sig.style.fontWeight = "700";
+  sig.style.fontSize = "12px";
+  sig.style.opacity = "0.5";
+  sig.style.cursor = "not-allowed";
+
+  controls.appendChild(author);
+  controls.appendChild(sig);
+
+  // Put controls after label (same line)
+  row.appendChild(controls);
+
+  console.log("[ncz-author-ui] added Author input + disabled Signature button next to Style Prompt label");
+})();
+
+
+
+
+
+// Persist ONLY Author (no title persistence)
+(() => {
+  "use strict";
+
+  const ID = "__ncz_author_input__";
+  const KEY = "NCZ_META_AUTHOR";
+
+  function attach() {
+    const el = document.getElementById(ID);
+    if (!el) return false;
+    if (el.dataset.__nczPersistBound__ === "1") return true;
+    el.dataset.__nczPersistBound__ = "1";
+
+    // restore
+    try {
+      const saved = localStorage.getItem(KEY);
+      if (saved != null) el.value = saved;
+    } catch {}
+
+    // save on input + change (some browsers only fire change reliably for autofill)
+    const save = () => {
+      try { localStorage.setItem(KEY, el.value || ""); } catch {}
+    };
+    el.addEventListener("input", save);
+    el.addEventListener("change", save);
+
+    // extra safety: save when leaving / tab hidden
+    window.addEventListener("beforeunload", save);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") save();
+    });
+
+    return true;
+  }
+
+  // try now
+  if (attach()) return;
+
+  // wait until the injected Author input exists
+  const mo = new MutationObserver(() => {
+    if (attach()) mo.disconnect();
+  });
+  mo.observe(document.documentElement, { childList: true, subtree: true });
+})();
+
+
+//metalinks
+(() => {
+  "use strict";
+
+  const LIST_ID = "songList";
+  const META_LINK_CLASS = "__ncz_meta_link__";
+  const MODAL_ID = "__ncz_meta_modal__";
+
+  const list = document.getElementById(LIST_ID);
+  if (!list) {
+    console.warn(`[ncz-meta] #${LIST_ID} not found`);
+    return;
+  }
+
+  // -----------------------
+  // Helpers
+  // -----------------------
+  function decodeMaybe(s) { try { return decodeURIComponent(String(s || "")); } catch { return String(s || ""); } }
+
+  function findDownloadLink(top) {
+    if (!top) return null;
+    const links = Array.from(top.querySelectorAll("a"));
+    return (
+      links.find(a => (a.textContent || "").trim().toLowerCase() === "download") ||
+      links.find(a => a.hasAttribute("download")) ||
+      null
+    );
+  }
+
+  function extractMp3FilenameFromHref(href) {
+    try {
+      const u = new URL(href, window.location.origin);
+      const last = (u.pathname.split("/").filter(Boolean).pop() || "");
+      const decoded = decodeMaybe(last);
+      return decoded.toLowerCase().endsWith(".mp3") ? decoded : "";
+    } catch {
+      const s = String(href || "");
+      const path = s.split("?")[0];
+      const last = (path.split("/").filter(Boolean).pop() || "");
+      const decoded = decodeMaybe(last);
+      return decoded.toLowerCase().endsWith(".mp3") ? decoded : "";
+    }
+  }
+
+  function resolveSongsEndpoint() {
+    // Best: derive prefix from a real /api_audio/ link (supports /ace/ or any prefix)
+    const firstRow = list.querySelector('[data-song-index]');
+    const top = firstRow?.firstElementChild;
+    const dl = findDownloadLink(top);
+    if (dl?.href) {
+      try {
+        const u = new URL(dl.href, window.location.origin);
+        // pathname like: /ace/api_audio/xxx.mp3  -> prefix: /ace
+        const prefix = u.pathname.split("/api_audio/")[0].replace(/\/+$/, "");
+        return `${prefix}/songs`;
+      } catch {}
+    }
+
+    // Fallback: relative to current page (works if you're at /ace/ already)
+    return "songs";
+  }
+
+  // -----------------------
+  // /songs cache + lookups
+  // -----------------------
+  let songsState = {
+    ok: false,
+    error: null,
+    status: null,
+    endpoint_used: null,
+    fetchedAt: 0,
+    refreshed_at: null,
+    dir: null,
+    byIndex: [],
+    byFilename: new Map(),
+  };
+
+  let songsFetchPromise = null;
+
+  async function fetchSongsOnce(force = false) {
+    const now = Date.now();
+    if (!force && songsState.ok && (now - songsState.fetchedAt) < 30_000) return songsState;
+    if (!force && songsFetchPromise) return songsFetchPromise;
+
+    songsFetchPromise = (async () => {
+      const endpoint = resolveSongsEndpoint();
+      songsState.endpoint_used = endpoint;
+
+      try {
+        const resp = await fetch(endpoint, { cache: "no-store" });
+        songsState.status = resp.status;
+
+        // If server returns HTML/404, JSON.parse will fail — so read text first.
+        const text = await resp.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Non-JSON response from ${endpoint} (status ${resp.status}). First 200 chars:\n${text.slice(0, 200)}`);
+        }
+
+const arrRaw = Array.isArray(data?.songs) ? data.songs : [];
+const arr = arrRaw.slice().reverse(); // <-- reverse server list without mutating original
+const byFilename = new Map();
+
+        arr.forEach((s) => {
+          const fn = (typeof s?.filename === "string" && s.filename) ? s.filename : "";
+          if (fn) byFilename.set(fn, s);
+          else if (typeof s?.file === "string") {
+            const last = (s.file.split("?")[0].split("/").filter(Boolean).pop() || "");
+            const decoded = decodeMaybe(last);
+            if (decoded.toLowerCase().endsWith(".mp3")) byFilename.set(decoded, s);
+          }
+        });
+
+        songsState = {
+          ok: true,
+          error: null,
+          status: resp.status,
+          endpoint_used: endpoint,
+          fetchedAt: Date.now(),
+          refreshed_at: Number.isFinite(Number(data?.refreshed_at)) ? Number(data.refreshed_at) : null,
+          dir: typeof data?.dir === "string" ? data.dir : null,
+          byIndex: arr,
+          byFilename,
+        };
+
+        return songsState;
+      } catch (e) {
+        songsState.ok = false;
+        songsState.error = String(e?.message || e);
+        return songsState;
+      } finally {
+        songsFetchPromise = null;
+      }
+    })();
+
+    return songsFetchPromise;
+  }
+
+  function findServerSongForRow(row) {
+    const songIndexAttr = row?.getAttribute("data-song-index");
+    const songIndex = (songIndexAttr != null && songIndexAttr !== "") ? Number(songIndexAttr) : null;
+
+    const top = row?.firstElementChild;
+    const dl = findDownloadLink(top);
+    const mp3Name = dl?.href ? extractMp3FilenameFromHref(dl.href) : "";
+
+    if (Number.isFinite(songIndex) && songsState.byIndex[songIndex]) return songsState.byIndex[songIndex];
+    if (mp3Name && songsState.byFilename.has(mp3Name)) return songsState.byFilename.get(mp3Name);
+
+    return null;
+  }
+
+  function hydrateRowDatasetFromServer(row, serverSong) {
+    if (!row || !serverSong) return;
+    const a = (serverSong.author || "").trim();
+    const t = (serverSong.title || "").trim();
+    if (a) row.dataset.author = a;
+    if (t) row.dataset.title = t;
+  }
+
+  function collectUiExtracted(row) {
+    const top = row?.firstElementChild;
+    const dl = findDownloadLink(top);
+    const url = (dl?.href || "").trim();
+
+    const songIndexAttr = row?.getAttribute("data-song-index");
+    const songIndex = songIndexAttr != null && songIndexAttr !== "" ? Number(songIndexAttr) : null;
+
+    return {
+      author: (row?.dataset?.author || "").trim(),
+      title: (row?.dataset?.title || "").trim(),
+      url,
+      song_index: Number.isFinite(songIndex) ? songIndex : null,
+    };
+  }
+
+  // -----------------------
+  // Modal
+  // -----------------------
+  function closeModal() {
+    const existing = document.getElementById(MODAL_ID);
+    if (existing) existing.remove();
+  }
+
+  function openModal(payload) {
+    closeModal();
+
+    const overlay = document.createElement("div");
+    overlay.id = MODAL_ID;
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.zIndex = "99999999";
+    overlay.style.background = "rgba(0,0,0,.55)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.padding = "18px";
+
+    const card = document.createElement("div");
+    card.style.width = "min(760px, 92vw)";
+    card.style.maxHeight = "min(78vh, 780px)";
+    card.style.overflow = "auto";
+    card.style.borderRadius = "16px";
+    card.style.border = "1px solid rgba(255,255,255,.12)";
+    card.style.boxShadow = "0 16px 50px rgba(0,0,0,.55)";
+    card.style.background = "rgba(12,16,26,.96)";
+    card.style.backdropFilter = "blur(10px)";
+    card.style.padding = "14px";
+
+    const title = document.createElement("div");
+    title.textContent = "Song Metadata";
+    title.style.fontWeight = "900";
+    title.style.fontSize = "14px";
+    title.style.marginBottom = "10px";
+    title.style.color = "rgba(233,238,252,.95)";
+    card.appendChild(title);
+
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    pre.style.whiteSpace = "pre-wrap";
+    pre.style.wordBreak = "break-word";
+    pre.style.margin = "0";
+    pre.style.padding = "12px";
+    pre.style.borderRadius = "12px";
+    pre.style.border = "1px solid rgba(255,255,255,.10)";
+    pre.style.background = "rgba(0,0,0,.25)";
+    pre.style.color = "rgba(233,238,252,.92)";
+    pre.style.fontFamily =
+      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+    pre.style.fontSize = "12px";
+    card.appendChild(pre);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "10px";
+    btnRow.style.justifyContent = "flex-end";
+    btnRow.style.marginTop = "12px";
+
+    const btnDownload = document.createElement("button");
+    btnDownload.type = "button";
+    btnDownload.textContent = "Download";
+    btnDownload.style.border = "0";
+    btnDownload.style.borderRadius = "12px";
+    btnDownload.style.padding = "10px 12px";
+    btnDownload.style.cursor = "pointer";
+    btnDownload.style.fontWeight = "900";
+    btnDownload.style.fontSize = "13px";
+    btnDownload.style.background = "rgba(106,166,255,.22)";
+    btnDownload.style.color = "rgba(233,238,252,.95)";
+    btnDownload.addEventListener("click", (e) => {
+      e.preventDefault();
+      const url = payload?.ui_extracted?.url || payload?.server_song?.file;
+      if (!url) return;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+
+    const btnClose = document.createElement("button");
+    btnClose.type = "button";
+    btnClose.textContent = "Close";
+    btnClose.style.border = "0";
+    btnClose.style.borderRadius = "12px";
+    btnClose.style.padding = "10px 12px";
+    btnClose.style.cursor = "pointer";
+    btnClose.style.fontWeight = "900";
+    btnClose.style.fontSize = "13px";
+    btnClose.style.background = "rgba(255,255,255,.10)";
+    btnClose.style.color = "rgba(233,238,252,.95)";
+    btnClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeModal();
+    });
+
+    btnRow.appendChild(btnDownload);
+    btnRow.appendChild(btnClose);
+    card.appendChild(btnRow);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
+  }
+
+  // -----------------------
+  // Inject Metadata links
+  // -----------------------
+  async function processRow(row) {
+    if (!row || row.nodeType !== 1) return;
+
+    const top = row.firstElementChild;
+    if (!top) return;
+
+    const dl = findDownloadLink(top);
+    if (!dl?.href) return;
+
+    const right = dl.parentElement;
+    if (!right) return;
+
+    if (right.querySelector(`.${META_LINK_CLASS}`)) return;
+
+    const metaLink = document.createElement("a");
+    metaLink.href = "#";
+    metaLink.textContent = "Metadata";
+    metaLink.className = META_LINK_CLASS;
+    metaLink.style.marginLeft = "12px";
+
+    metaLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+
+      await fetchSongsOnce(false);
+
+      const serverSong = songsState.ok ? findServerSongForRow(row) : null;
+      if (serverSong) hydrateRowDatasetFromServer(row, serverSong);
+
+      openModal({
+        server: {
+          ok: songsState.ok,
+          status: songsState.status,
+          error: songsState.error,
+          dir: songsState.dir,
+          refreshed_at: songsState.refreshed_at,
+          fetched_at: songsState.fetchedAt ? new Date(songsState.fetchedAt).toISOString() : null,
+          endpoint_used: songsState.endpoint_used,
+        },
+        ui_extracted: collectUiExtracted(row),
+        server_song: serverSong,
+      });
+    });
+
+    dl.insertAdjacentElement("afterend", metaLink);
+  }
+
+  function processAll() {
+    list.querySelectorAll('[data-song-index]').forEach(processRow);
+  }
+
+  processAll();
+
+  const mo = new MutationObserver((mutList) => {
+    for (const m of mutList) {
+      for (const node of m.addedNodes) {
+        if (node?.nodeType === 1) {
+          if (node.matches?.('[data-song-index]')) processRow(node);
+          else {
+            const r = node.querySelector?.('[data-song-index]');
+            if (r) processRow(r);
+          }
+        }
+      }
+    }
+  });
+  mo.observe(list, { childList: true, subtree: false });
+
+  console.log("[ncz-meta] enabled (auto-detects /songs prefix from /api_audio/ links)");
+})();
+
+
+
+
+//media player upload file
+// Adds a "Source Audio" upload button next to the Song Title label.
+// UI only for now (no server upload yet, no mini player yet).
+// Selected File is stored in: window.__ncz_sourceAudioFile
+
+(() => {
+  "use strict";
+
+  const SONG_TITLE_INPUT_ID = "__ncz_songtitle_input__";
+  const ROW_ID = "__ncz_songtitle_label_row__";
+  const BTN_ID = "__ncz_source_audio_btn__";
+  const FILE_ID = "__ncz_source_audio_file__";
+
+  const $ = (id) => document.getElementById(id);
+
+  function ensure() {
+    if ($(BTN_ID)) return;
+
+    // Find the Song Title label
+    const label =
+      document.querySelector(`label[for="${SONG_TITLE_INPUT_ID}"]`) ||
+      $(SONG_TITLE_INPUT_ID)?.closest("div")?.querySelector("label") ||
+      null;
+
+    if (!label) return; // Song Title UI not injected yet
+
+    // Wrap label in a row (label left, button right)
+    let row = $(ROW_ID);
+    if (!row) {
+      row = document.createElement("div");
+      row.id = ROW_ID;
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.justifyContent = "space-between";
+      row.style.gap = "10px";
+      row.style.margin = "10px 0 6px";
+
+      // Insert row where label was, then move label into it
+      const parent = label.parentNode;
+      parent.insertBefore(row, label);
+      row.appendChild(label);
+
+      // Let the row control spacing
+      label.style.margin = "0";
+      label.style.flex = "1 1 auto";
+    }
+
+    // Hidden file input
+    let file = $(FILE_ID);
+    if (!file) {
+      file = document.createElement("input");
+      file.id = FILE_ID;
+      file.type = "file";
+      file.accept = "audio/*";
+      file.style.display = "none";
+      row.appendChild(file);
+    }
+
+    // Button
+    const btn = document.createElement("button");
+    btn.id = BTN_ID;
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.textContent = "Source Audio";
+    btn.title = "Choose a local audio file (UI only for now)";
+
+    // Small “secondary” style to match your Make Lyrics button
+    btn.style.padding = "8px 10px";
+    btn.style.borderRadius = "12px";
+    btn.style.fontWeight = "700";
+    btn.style.fontSize = "12px";
+    btn.style.flex = "0 0 auto";
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      file.click();
+    });
+
+    file.addEventListener("change", () => {
+      const f = file.files && file.files[0] ? file.files[0] : null;
+      window.__ncz_sourceAudioFile = f || null;
+
+      // tiny visual feedback (still "just a button")
+      if (f) {
+        btn.textContent = "Source Audio ✓";
+        btn.title = `Selected: ${f.name}`;
+      } else {
+        btn.textContent = "Source Audio";
+        btn.title = "Choose a local audio file (UI only for now)";
+      }
+    });
+
+    row.appendChild(btn);
+    console.log("[ncz-source-audio] Added Source Audio button next to Song Title label.");
+  }
+
+  // Run now + watch briefly for the Song Title injection to appear
+  ensure();
+  const mo = new MutationObserver(ensure);
+  mo.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(() => mo.disconnect(), 15000);
+})();
+
+
+
+
+/* NCZ Upload MP3 Preview Player v2
+   - Waits for file input to exist (SPA/dynamic DOM safe)
+   - Searches document + OPEN shadow roots
+   - Inserts <audio controls> between "title label" and the upload button (best effort)
+   - Shows player only for the selected upload file
+*/
+
+(() => {
+  "use strict";
+
+  const CONFIG = {
+    // If you know selectors, set them. Otherwise leave blank for auto-detect.
+    fileInputSelector: "",     // e.g. '#uploadFile' or 'input[type="file"][accept*="audio"]'
+    titleLabelSelector: "",    // e.g. '#uploadTitleLabel' or '.upload-title'
+    uploadButtonSelector: "",  // e.g. '#uploadBtn' or 'button.upload'
+    playerId: "uploadFilePlayer",
+
+    // scanning behavior
+    scanEveryMs: 500,
+    maxScanMs: 30_000, // stop after 30s (will still keep MutationObserver alive)
+    debug: true
+  };
+
+  let objectUrl = null;
+  let installed = false;
+
+  function log(...args) { if (CONFIG.debug) console.log(...args); }
+  function warn(...args) { console.warn(...args); }
+
+  function normText(s) { return (s || "").replace(/\s+/g, " ").trim().toLowerCase(); }
+
+  // ---- Shadow DOM helpers (OPEN shadow roots only)
+  function* walkOpenShadowRoots(root = document) {
+    // Yield root first
+    yield root;
+
+    // Then traverse elements and yield shadow roots if open
+    const treeWalker = document.createTreeWalker(
+      root instanceof Document ? root.documentElement : root,
+      NodeFilter.SHOW_ELEMENT
+    );
+
+    let node = treeWalker.currentNode;
+    let count = 0;
+    const HARD_LIMIT = 10_000; // safety
+
+    while (node && count < HARD_LIMIT) {
+      count++;
+      // @ts-ignore
+      if (node.shadowRoot) yield node.shadowRoot;
+      node = treeWalker.nextNode();
+    }
+  }
+
+  function qsaDeep(selector) {
+    const out = [];
+    for (const root of walkOpenShadowRoots(document)) {
+      try {
+        out.push(...Array.from(root.querySelectorAll(selector)));
+      } catch {}
+    }
+    return out;
+  }
+
+  function qsDeep(selector) {
+    for (const root of walkOpenShadowRoots(document)) {
+      try {
+        const el = root.querySelector(selector);
+        if (el) return el;
+      } catch {}
+    }
+    return null;
+  }
+
+  // ---- Finders
+  function looksLikeAudioInput(inp) {
+    if (!inp || inp.tagName !== "INPUT") return false;
+    if (inp.type !== "file") return false;
+
+    const accept = (inp.getAttribute("accept") || "").toLowerCase();
+    const idn = `${inp.id || ""} ${inp.name || ""} ${inp.className || ""}`.toLowerCase();
+
+    return (
+      accept.includes("audio") ||
+      accept.includes(".mp3") ||
+      accept.includes("mp3") ||
+      idn.includes("mp3") ||
+      idn.includes("audio") ||
+      idn.includes("upload")
+    );
+  }
+
+  function dumpFileInputs(inputs) {
+    if (!CONFIG.debug) return;
+    log("[upload preview] file inputs seen:", inputs.map((i) => ({
+      id: i.id || "",
+      name: i.name || "",
+      accept: i.getAttribute("accept") || "",
+      multiple: !!i.multiple,
+      hidden: i.hidden || i.style?.display === "none" || i.type === "hidden",
+      className: i.className || ""
+    })));
+  }
+
+  function findFileInput() {
+    // explicit selector (deep)
+    if (CONFIG.fileInputSelector) {
+      const el = qsDeep(CONFIG.fileInputSelector);
+      if (el && el.tagName === "INPUT" && el.type === "file") return el;
+    }
+
+    // any file inputs (deep)
+    const all = qsaDeep('input[type="file"]');
+    if (!all.length) return null;
+
+    // prefer audio-ish
+    const audioish = all.filter(looksLikeAudioInput);
+    dumpFileInputs(all);
+
+    return (audioish[0] || all[0]) || null;
+  }
+
+  function findTitleLabel(fileInput) {
+    if (CONFIG.titleLabelSelector) return qsDeep(CONFIG.titleLabelSelector);
+
+    // label[for=id]
+    if (fileInput && fileInput.id) {
+      const byFor = qsDeep(`label[for="${CSS.escape(fileInput.id)}"]`);
+      if (byFor) return byFor;
+    }
+
+    // nearby element with "title" vibe
+    if (fileInput) {
+      const container = fileInput.closest?.("section, .card, .panel, .row, .controls, .upload, div") || fileInput.parentElement;
+      if (container) {
+        const candidates = Array.from(container.querySelectorAll("label, .title, .label, h1, h2, h3, strong, div, span"));
+        const good = candidates.find((el) => {
+          const t = normText(el.textContent);
+          return t.includes("title") || t.includes("upload") || t.includes("file") || t.includes("caption");
+        });
+        if (good) return good;
+      }
+    }
+
+    return null;
+  }
+
+  function findUploadButton(fileInput, titleLabel) {
+    if (CONFIG.uploadButtonSelector) return qsDeep(CONFIG.uploadButtonSelector);
+
+    // prefer button in same form/container
+    const container =
+      (fileInput && (fileInput.closest?.("form, section, .card, .panel, .row, .controls, .upload, div") || fileInput.parentElement)) ||
+      (titleLabel && (titleLabel.closest?.("form, section, .card, .panel, .row, .controls, .upload, div") || titleLabel.parentElement)) ||
+      document.body;
+
+    const buttons = Array.from(container.querySelectorAll("button"));
+    const uploadish = buttons.find((b) => /upload|send|submit|add|save/i.test(b.textContent || ""));
+    if (uploadish) return uploadish;
+
+    // fallback: nearest button after titleLabel
+    if (titleLabel && titleLabel.parentElement) {
+      const all = Array.from(container.querySelectorAll("*"));
+      const idx = all.indexOf(titleLabel);
+      if (idx >= 0) {
+        for (let i = idx + 1; i < all.length; i++) {
+          if (all[i].tagName === "BUTTON") return all[i];
+        }
+      }
+    }
+
+    return buttons[0] || null;
+  }
+
+  // ---- Player install / behavior
+  function ensurePlayer() {
+    let player = document.getElementById(CONFIG.playerId);
+    if (!player) {
+      player = document.createElement("audio");
+      player.id = CONFIG.playerId;
+      player.controls = true;
+      player.preload = "metadata";
+      player.style.display = "none";
+      player.style.width = "100%";
+      player.style.margin = "8px 0";
+    }
+    return player;
+  }
+
+  function placePlayerBetween(player, titleLabel, uploadButton, fileInput) {
+    // Primary: after titleLabel
+    if (titleLabel && titleLabel.parentNode) {
+      const parent = titleLabel.parentNode;
+      if (player.parentNode !== parent) parent.insertBefore(player, titleLabel.nextSibling);
+      else parent.insertBefore(player, titleLabel.nextSibling);
+
+      // If button exists and is before player in same parent, move player before button
+      if (uploadButton && uploadButton.parentNode === parent) {
+        const nodes = Array.from(parent.childNodes);
+        if (nodes.indexOf(player) > nodes.indexOf(uploadButton)) {
+          parent.insertBefore(player, uploadButton);
+        }
+      }
+      return;
+    }
+
+    // Secondary: before upload button
+    if (uploadButton && uploadButton.parentNode) {
+      uploadButton.parentNode.insertBefore(player, uploadButton);
+      return;
+    }
+
+    // Fallback: after file input
+    if (fileInput && fileInput.parentNode) {
+      fileInput.parentNode.insertBefore(player, fileInput.nextSibling);
+      return;
+    }
+
+    // Last resort
+    document.body.appendChild(player);
+  }
+
+  function clearPreview(player) {
+    if (!player) return;
+    try { player.pause(); } catch {}
+    player.removeAttribute("src");
+    player.style.display = "none";
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+  }
+
+  function setPreview(player, file) {
+    const isAudio = /^audio\//i.test(file.type || "");
+    const isMp3Name = /\.mp3$/i.test(file.name || "");
+    if (!isAudio && !isMp3Name) {
+      alert("Please select an audio file (mp3).");
+      return false;
+    }
+
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(file);
+
+    player.src = objectUrl;
+    player.style.display = "";
+    player.load();
+    return true;
+  }
+
+  function installOnce() {
+    if (installed) return true;
+
+    const fileInput = findFileInput();
+    if (!fileInput) return false;
+
+    const titleLabel = findTitleLabel(fileInput);
+    const uploadButton = findUploadButton(fileInput, titleLabel);
+    const player = ensurePlayer();
+
+    placePlayerBetween(player, titleLabel, uploadButton, fileInput);
+
+    // hook change
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return clearPreview(player);
+
+      const ok = setPreview(player, f);
+      if (!ok) {
+        fileInput.value = "";
+        clearPreview(player);
+      }
+    });
+
+    // show if already set
+    if (fileInput.files && fileInput.files[0]) setPreview(player, fileInput.files[0]);
+
+    window.addEventListener("beforeunload", () => clearPreview(player));
+
+    window.NCZ_UPLOAD_PREVIEW = {
+      clear: () => clearPreview(player),
+      getPlayer: () => player,
+      getInput: () => fileInput
+    };
+
+    installed = true;
+    log("[upload preview] installed:", {
+      fileInput: fileInput.id || fileInput.name || fileInput,
+      titleLabel: titleLabel ? (titleLabel.id || normText(titleLabel.textContent)) : null,
+      uploadButton: uploadButton ? (uploadButton.id || normText(uploadButton.textContent)) : null,
+      playerId: player.id
+    });
+
+    return true;
+  }
+
+  // ---- Keep trying until it exists (dynamic DOM safe)
+  function startWatcher() {
+    const start = Date.now();
+
+    // quick attempt now
+    if (installOnce()) return;
+
+    warn("[upload preview] No file input found yet — watching DOM for it…");
+
+    // interval scanning (handles cases observer misses or shadow updates)
+    const timer = setInterval(() => {
+      if (installOnce()) {
+        clearInterval(timer);
+        return;
+      }
+      if (Date.now() - start > CONFIG.maxScanMs) {
+        // don’t spam forever; observer still runs
+        clearInterval(timer);
+        warn("[upload preview] Still no <input type=file> after scan window. If your uploader is in an iframe, this script must run inside that iframe.");
+      }
+    }, CONFIG.scanEveryMs);
+
+    // mutation observer
+    const obs = new MutationObserver(() => {
+      if (installOnce()) {
+        try { obs.disconnect(); } catch {}
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startWatcher, { once: true });
+  } else {
+    startWatcher();
+  }
+})();
+
+// RIGHT PANEL: Full Lyrics viewer (auto-updates when song changes)
+// Paste this at the VERY BOTTOM of your file (after the right panel script exists).
+
+let __legacyPlaceholderHiddenOnce = false;
+
+function hideLegacyPlaceholderOnce(){
+  if (__legacyPlaceholderHiddenOnce) return;
+
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel) return;
+
+  // Prefer: hide the specific placeholder CARD by its header text
+  const cards = Array.from(panel.querySelectorAll(".__card__"));
+  for (const c of cards) {
+    const h = (c.querySelector(".__h__")?.textContent || "").trim().toLowerCase();
+    if (h.includes("lyrics") && h.includes("meta") && h.includes("placeholder")) {
+      c.style.display = "none";                 // kills the “weird box” too
+      __legacyPlaceholderHiddenOnce = true;
+      return;
+    }
+  }
+
+  // Fallback: if header changed, hide only the old logo image INSIDE a card (not our media img/video)
+  const imgs = Array.from(panel.querySelectorAll(".__card__ img"));
+  for (const im of imgs) {
+    const src = String(im.getAttribute("src") || "");
+    if (src.includes("/images/ncz.png")) {
+      const card = im.closest(".__card__");
+      if (card) card.style.display = "none";
+      else im.style.display = "none";
+      __legacyPlaceholderHiddenOnce = true;
+      return;
+    }
+  }
+}
+
+
+
+const LEGACY_IMG_ID = "__ncz_legacy_placeholder_img__";
+let __legacyHiddenOnce = false;
+
+function hideLegacyPlaceholderOnce(){
+  const el = document.getElementById("__ncz_legacy_placeholder_img__");
+  if (el) el.style.display = "none";
+}
+
+
+
+(() => {
+  "use strict";
+
+  const PANEL_ID = "__ncz_right_info__";
+  const CARD_ID  = "__ncz_right_lyrics_card__";
+  const TEXT_ID  = "__ncz_right_lyrics_text__";
+  const STYLE_ID = "__ncz_right_lyrics_style__";
+const LEGACY_PLACEHOLDER_IMG_ID  = "__ncz_legacy_placeholder_img__";
+const LEGACY_PLACEHOLDER_IMG_SRC = "info.nanocheeze.com/images/ncz.png";
+let __legacyPlaceholderHiddenOnce = false;
+
+  // media ids
+  const MEDIA_WRAP_ID  = "__ncz_right_lyrics_media_wrap__";
+  const MEDIA_IMG_ID   = "__ncz_right_lyrics_img__";   // <-- give your existing image this id
+  const MEDIA_VIDEO_ID = "__ncz_right_lyrics_video__";
+
+// Where the plain-text list lives (one URL per line)
+const VIDEO_LIST_URL = "https://xtdevelopment.net/ace/videos.txt";
+
+// Optional fallback list (used if fetch fails or file is empty)
+const VIDEO_URLS_FALLBACK = [
+  "https://imagine-public.x.ai/imagine-public/share-videos/fd981918-a25f-485c-8330-c3dd67b2a863.mp4",
+  "https://imagine-public.x.ai/imagine-public/share-videos/742b72a0-ba2c-4225-a02b-f47e430683c2.mp4",
+  "https://imagine-public.x.ai/imagine-public/share-videos/a4263963-2696-424c-b81d-00c8dae49113.mp4",
+];
+
+// This will become your actual list after loading
+let VIDEO_URLS = [];
+
+async function loadVideoUrlsFromFile(url = VIDEO_LIST_URL) {
+  // cache-bust so updates to videos.txt show up immediately
+  const bust = (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+
+  const res = await fetch(url + bust, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to load video list: ${res.status} ${res.statusText}`);
+
+  const text = await res.text();
+
+  // one url per line; ignore blank lines + comment lines
+  const urls = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#") && !l.startsWith("//"));
+
+  return urls;
+}
+
+// Call this BEFORE any code that uses VIDEO_URLS
+async function initVideoUrls() {
+  try {
+    const urls = await loadVideoUrlsFromFile();
+    VIDEO_URLS = urls.length ? urls : VIDEO_URLS_FALLBACK.slice();
+  } catch (err) {
+    console.warn("[videos.txt] load failed, using fallback list:", err);
+    VIDEO_URLS = VIDEO_URLS_FALLBACK.slice();
+  }
+}
+
+initVideoUrls();
+  // prevent double-run
+  if (window.__nczLyricsViewerInstalled__) return;
+  window.__nczLyricsViewerInstalled__ = true;
+
+  // remember last change signature + last picked video
+  let __lastChangeSig = "";
+  let __lastVideoUrl = "";
+
+  // track desired mode based on audio player
+  // "video" when audio is playing, "image" when paused
+  let __desiredMode = "video";
+
+  function ensureStyles(){
+    if (document.getElementById(STYLE_ID)) return;
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      #${CARD_ID} .__ncz_lyrics_pre__{
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-family: var(--mono, ui-monospace);
+        font-size: 12px;
+        line-height: 1.35;
+        color: rgba(233,238,252,.95);
+        max-height: clamp(220px, 45vh, 680px);
+        overflow: auto;
+        padding: 8px 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.18);
+      }
+      #${CARD_ID} .__ncz_lyrics_hint__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        margin-top: 6px;
+      }
+
+      /* centered media area */
+      #${MEDIA_WRAP_ID}{
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 8px 0 10px 0;
+      }
+      #${MEDIA_WRAP_ID} > *{
+        display: block;
+        margin: 0 auto;
+        width: 100%;
+        max-width: 520px;
+        height: auto;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.25);
+      }
+      #${MEDIA_IMG_ID}{
+        object-fit: contain;
+      }
+      #${MEDIA_VIDEO_ID}{
+        object-fit: cover;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function ensureLyricsCard(){
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) return null;
+
+    const body = panel.querySelector(".__body__");
+    if (!body) return null;
+
+    ensureStyles();
+
+    // Reuse an existing "Lyrics" card if you already have one
+    let card = document.getElementById(CARD_ID);
+    if (!card) {
+      const existing = Array.from(body.querySelectorAll(".__card__")).find(c => {
+        const h = (c.querySelector(".__h__")?.textContent || "").toLowerCase();
+        return h.includes("lyrics");
+      });
+
+      if (existing) {
+        card = existing;
+        card.id = CARD_ID;
+      } else {
+        card = document.createElement("div");
+        card.className = "__card__";
+        card.id = CARD_ID;
+
+        const h = document.createElement("div");
+        h.className = "__h__";
+        h.textContent = "Lyrics (full)";
+        card.appendChild(h);
+
+        body.insertBefore(card, body.firstChild);
+      }
+    }
+
+    // Ensure header title is correct
+    const header = card.querySelector(".__h__") || (() => {
+      const h = document.createElement("div");
+      h.className = "__h__";
+      card.insertBefore(h, card.firstChild);
+      return h;
+    })();
+    header.textContent = "Song Lyrics";
+
+    // Ensure media wrapper exists (right under header)
+    let wrap = document.getElementById(MEDIA_WRAP_ID);
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = MEDIA_WRAP_ID;
+      if (header.nextSibling) card.insertBefore(wrap, header.nextSibling);
+      else card.appendChild(wrap);
+    }
+
+    // Ensure image exists (reuse existing if present)
+    let img = document.getElementById(MEDIA_IMG_ID);
+    if (!img) {
+      // try to adopt any existing img already in the wrap
+      const found = wrap.querySelector("img");
+      if (found) {
+        img = found;
+        img.id = MEDIA_IMG_ID;
+      } else {
+        img = document.createElement("img");
+        img.id = MEDIA_IMG_ID;
+        img.alt = "";
+
+        img.src = "https://pbs.twimg.com/profile_images/1636234817741414401/O2_rny6V_400x400.png";
+
+        wrap.appendChild(img);
+      }
+    } else {
+      // ensure it's inside wrap
+      if (img.parentElement !== wrap) wrap.appendChild(img);
+    }
+
+    // Ensure video exists
+    let vid = document.getElementById(MEDIA_VIDEO_ID);
+    if (!vid) {
+      vid = document.createElement("video");
+      vid.id = MEDIA_VIDEO_ID;
+
+      // autoplay-safe attributes
+      vid.autoplay = true;
+      vid.loop = true;
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.controls = false;
+
+      vid.setAttribute("muted", "");
+      vid.setAttribute("playsinline", "");
+      vid.setAttribute("webkit-playsinline", "");
+
+      wrap.appendChild(vid);
+    } else {
+      if (vid.parentElement !== wrap) wrap.appendChild(vid);
+    }
+
+    // Ensure pre container exists
+    let pre = document.getElementById(TEXT_ID);
+    if (!pre) {
+      pre = document.createElement("pre");
+      pre.id = TEXT_ID;
+      pre.className = "__ncz_lyrics_pre__";
+      card.appendChild(pre);
+
+      const hint = document.createElement("div");
+      hint.className = "__ncz_lyrics_hint__";
+      hint.textContent = "NanoCheeZe MEQUAVIS";
+      card.appendChild(hint);
+    }
+
+    // media play/visibility hooks:
+    // When video is actually playing, hide image (even if something else tried to show it)
+    // When video pauses, we don't auto-show image unless audio is paused (handled by sync).
+    if (!vid.__nczMediaHooks__) {
+      vid.__nczMediaHooks__ = true;
+      vid.addEventListener("playing", () => {
+        const ui = ensureLyricsCard();
+        if (!ui) return;
+        ui.img.style.display = "none";
+        ui.vid.style.display = "block";
+      });
+    }
+
+    return { panel, body, card, pre, vid, img };
+  }
+
+  function getCurrentSong(){
+    const songs = window.songs;
+    if (!Array.isArray(songs) || !songs.length) return null;
+
+    let idx = (typeof window.currentSongIndex === "number") ? window.currentSongIndex : -1;
+
+    // fallback: match by player src
+    if (idx < 0 || idx >= songs.length) {
+      const player = document.getElementById("player");
+      const src = (player?.currentSrc || player?.src || "").trim();
+      if (src) idx = songs.findIndex(s => s && String(s.url || "") === src);
+    }
+
+    if (idx < 0 || idx >= songs.length) return null;
+    return { idx, song: songs[idx] };
+  }
+
+  function pickMetaForSong(song){
+    if (!song) return {};
+    const m1 = (song.meta && typeof song.meta === "object") ? song.meta : null;
+
+    let m2 = null;
+    try{
+      if (window.songUrlToMeta && typeof window.songUrlToMeta.get === "function") {
+        m2 = window.songUrlToMeta.get(song.url);
+      }
+    }catch{}
+
+    return Object.assign({}, m2 || {}, m1 || {});
+  }
+
+  function fmtTitle(meta, song){
+    const t = String(meta?.title || "").trim();
+    const lbl = String(song?.label || "").trim();
+    return t || lbl || "Song";
+  }
+
+  function buildChangeSignature(cur, meta){
+    const url = String(cur?.song?.url || "");
+    const lyr = String(meta?.lyrics || "");
+    const prm = String(meta?.prompt || "");
+    return [
+      url,
+      lyr.length, lyr.slice(0, 80), lyr.slice(-80),
+      prm.length, prm.slice(0, 60), prm.slice(-60),
+    ].join("|");
+  }
+
+  function pickRandomVideoUrl(){
+    const list = VIDEO_URLS.filter(Boolean).map(String);
+    if (!list.length) return "";
+
+    if (list.length === 1) return list[0];
+
+    for (let k = 0; k < 6; k++){
+      const u = list[(Math.random() * list.length) | 0];
+      if (u && u !== __lastVideoUrl) return u;
+    }
+    return list[(Math.random() * list.length) | 0];
+  }
+
+  function setMediaMode(mode){
+    const ui = ensureLyricsCard();
+    if (!ui) return;
+
+    if (mode === "image") {
+      ui.vid.style.display = "none";
+      ui.img.style.display = "block";
+      try { ui.vid.pause(); } catch {}
+      return;
+    }
+  if (mode === "video") {
+    hideLegacyPlaceholderOnce(); // <-- add this
+}
+    // mode === "video"
+
+    ui.img.style.display = "none";
+    ui.vid.style.display = "block";
+
+    // try to play if we have a src
+    try {
+      const p = ui.vid.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch {}
+  }
+
+  function setAndPlayVideo(videoEl, url){
+    if (!videoEl) return;
+
+    if (!url) {
+      videoEl.removeAttribute("src");
+      try { videoEl.load(); } catch {}
+      return;
+    }
+
+    // always muted for autoplay
+    videoEl.muted = true;
+    videoEl.setAttribute("muted", "");
+
+    // swap source
+    videoEl.src = url;
+    try { videoEl.load(); } catch {}
+
+    const tryPlay = () => {
+      if (__desiredMode !== "video") return; // don't start video if audio paused
+      try {
+        const p = videoEl.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {
+            // if autoplay fails, fall back to image mode while paused/blocked
+            setMediaMode("image");
+          });
+        }
+      } catch {
+        setMediaMode("image");
+      }
+    };
+
+    tryPlay();
+    videoEl.onloadedmetadata = tryPlay;
+    videoEl.oncanplay = tryPlay;
+  }
+
+  function syncMediaToAudioState(){
+    const player = document.getElementById("player");
+    const paused = !!player?.paused;
+
+    __desiredMode = paused ? "image" : "video";
+    setMediaMode(__desiredMode);
+  }
+
+  function updateLyricsPanel(){
+    const ui = ensureLyricsCard();
+    if (!ui) return;
+
+    const cur = getCurrentSong();
+    if (!cur) {
+      ui.pre.textContent = "No song selected.\n\nClick Play on a song to load it, then lyrics will appear here.";
+      setAndPlayVideo(ui.vid, "");
+      __lastChangeSig = "";
+      syncMediaToAudioState();
+      return;
+    }
+
+    const { song } = cur;
+    const meta = pickMetaForSong(song);
+
+    const title = fmtTitle(meta, song);
+    const author = String(meta.author || "").trim();
+    const signature = String(meta.signature || "").trim();
+    const prompt = String(meta.prompt || "").trim();
+    const lyrics = String(meta.lyrics || "").trim();
+
+    const out = [];
+    out.push(`🎵 ${title}`);
+    if (author) out.push(`Author: ${author}`);
+    if (signature) out.push(`Signature: ${signature}`);
+    if (prompt) out.push(`Prompt: ${prompt}`);
+    out.push("");
+    out.push(lyrics || "(No lyrics stored for this song.)");
+
+    ui.pre.textContent = out.join("\n");
+
+    // pick new video when song/lyrics/prompt changes
+    const sig = buildChangeSignature(cur, meta);
+    if (sig !== __lastChangeSig) {
+      __lastChangeSig = sig;
+
+      const nextVid = pickRandomVideoUrl();
+      __lastVideoUrl = nextVid || "";
+      setAndPlayVideo(ui.vid, nextVid);
+    }
+
+    // enforce correct visibility (pause => image, play => video)
+    syncMediaToAudioState();
+  }
+
+  // Debounced scheduler
+  let raf = 0;
+  function scheduleUpdate(){
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      updateLyricsPanel();
+    });
+  }
+
+  function tryWrapLoader(){
+    const fn = window.loadIntoMainPlayer;
+    if (typeof fn !== "function") return false;
+    if (fn.__nczLyricsWrapped__) return true;
+
+    function wrappedLoadIntoMainPlayer(i, autoplay){
+      const res = fn.call(this, i, autoplay);
+      scheduleUpdate();
+      return res;
+    }
+    wrappedLoadIntoMainPlayer.__nczLyricsWrapped__ = true;
+    window.loadIntoMainPlayer = wrappedLoadIntoMainPlayer;
+    return true;
+  }
+
+  function bindPlayerObservers(){
+    const player = document.getElementById("player");
+    if (!player) return false;
+
+    // update lyrics + also keep media toggle synced
+    const sync = () => {
+      syncMediaToAudioState();
+      scheduleUpdate();
+    };
+
+    player.addEventListener("play", sync);
+    player.addEventListener("playing", sync);
+    player.addEventListener("pause", sync);
+    player.addEventListener("ended", sync);
+
+    player.addEventListener("loadstart", scheduleUpdate);
+    player.addEventListener("loadedmetadata", scheduleUpdate);
+    player.addEventListener("canplay", scheduleUpdate);
+
+    const mo = new MutationObserver(scheduleUpdate);
+    mo.observe(player, { attributes: true, attributeFilter: ["src"] });
+
+    return true;
+  }
+
+  // init + retries
+  scheduleUpdate();
+  bindPlayerObservers();
+
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    const ok = tryWrapLoader();
+    scheduleUpdate();
+    if (ok || tries > 80) clearInterval(t);
+  }, 250);
+
+  console.log("[ncz-lyrics] right panel full lyrics viewer + random video + pause/image toggle enabled");
+})();
+
+(() => {
+  window.addEventListener("load", () => {
+    setTimeout(() => {
+      const img = document.getElementById("__ncz_right_lyrics_img__");
+      if (img) img.style.display = "none";
+    }, 1000);
+  });
+})();
+
+
+
+</script>
+</body>
+</html>
