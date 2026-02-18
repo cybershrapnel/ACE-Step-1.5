@@ -823,138 +823,131 @@ focusAttention(i);
   }
 
 
-    function addSongToList(url, {label="", taskId="", outputIndex=0, createdAt="", meta=null, serverItem=null, downloadName=""} = {}){
+   function addSongToList(
+  url,
+  {label="", taskId="", outputIndex=0, createdAt="", meta=null, serverItem=null, downloadName=""} = {}
+){
+  url = absSongUrl(url);
+  if(!url) return -1;
 
-    url = absSongUrl(url);
-    if(!url) return -1;
+  // If already in list, MERGE meta + update caption
+  if(songUrlToIndex.has(url)){
+    const idx = songUrlToIndex.get(url);
+    const s = songs[idx];
 
-    // If already in list, MERGE meta + update caption
-    if(songUrlToIndex.has(url)){
-if(downloadName){
-  s.downloadName = downloadBasename(downloadName);
-}
-
-      const idx = songUrlToIndex.get(url);
-      const s = songs[idx];
-
-      // merge meta (new wins)
-      if(meta && typeof meta === "object"){
-        s.meta = Object.assign({}, s.meta || {}, meta);
-        songUrlToMeta.set(url, Object.assign({}, songUrlToMeta.get(url) || {}, meta));
-      }
-      if(serverItem) s.serverItem = serverItem;
-      if(taskId && !s.taskId) s.taskId = taskId;
-      if(createdAt && !s.createdAt) s.createdAt = createdAt;
-
-      // update visible caption if we can find it
-      const row = document.querySelector(`#songList [data-song-index="${idx}"]`);
-      if(row){
-        const cap = row.querySelector(".__ncz_caption__");
-        if(cap){
-          const metaNow = s.meta || songUrlToMeta.get(url) || {};
-          cap.textContent = pickSongDisplayTitle(metaNow, label || s.label || `Song ${idx + 1}`);
-
-        }
-  // ✅ refresh download filename too
-        const dlA = Array.from(row.querySelectorAll("a"))
-          .find(a => (a.textContent || "").trim().toLowerCase() === "download") ||
-          row.querySelector('a[download]');
-
-        if (dlA){
-  // ✅ recompute download name from dlA.href
-  applyDownloadFilenameFromHref(dlA);
-}
-      }
-      return idx;
+    // ✅ FIX: s exists now, safe to update
+    if(downloadName){
+      s.downloadName = downloadBasename(downloadName);
     }
 
-    const idx = songs.length;
+    // merge meta (new wins)
+    if(meta && typeof meta === "object"){
+      s.meta = Object.assign({}, s.meta || {}, meta);
+      songUrlToMeta.set(url, Object.assign({}, songUrlToMeta.get(url) || {}, meta));
+    }
+    if(serverItem) s.serverItem = serverItem;
+    if(taskId && !s.taskId) s.taskId = taskId;
+    if(createdAt && !s.createdAt) s.createdAt = createdAt;
 
-    // decide the visible title NOW (meta.title preferred)
-    const metaObj = (meta && typeof meta === "object") ? meta : {};
-    const displayTitle = pickSongDisplayTitle(metaObj, label);
+    // update visible caption if we can find it
+    const row = document.querySelector(`#songList [data-song-index="${idx}"]`);
+    if(row){
+      const cap = row.querySelector(".__ncz_caption__");
+      if(cap){
+        const metaNow = s.meta || songUrlToMeta.get(url) || {};
+        cap.textContent = pickSongDisplayTitle(metaNow, label || s.label || `Song ${idx + 1}`);
+      }
 
-const dlName = downloadBasename(downloadName);
+      // refresh download filename too
+      const dlA = Array.from(row.querySelectorAll("a"))
+        .find(a => (a.textContent || "").trim().toLowerCase() === "download") ||
+        row.querySelector('a[download]');
 
-songs.push({
-  url,
-  label: displayTitle,
-  taskId,
-  outputIndex,
-  createdAt,
-  meta: metaObj,
-  serverItem,
-  downloadName: dlName
-});
-
-    songUrlToIndex.set(url, idx);
-    songUrlToMeta.set(url, Object.assign({}, metaObj));
-
-    const row = document.createElement("div");
-    row.setAttribute("data-song-index", String(idx));
-    row.style.padding = "10px";
-    row.style.border = "1px solid rgba(255,255,255,.08)";
-    row.style.borderRadius = "12px";
-    row.style.background = "rgba(0,0,0,.18)";
-
-    const top = document.createElement("div");
-    top.style.display = "flex";
-    top.style.justifyContent = "space-between";
-    top.style.gap = "10px";
-    top.style.flexWrap = "wrap";
-    row.appendChild(top);
-
-    const left = document.createElement("div");
-    left.className = "small __ncz_caption__";
-    left.textContent = displayTitle || `Song ${idx + 1}`;
-    top.appendChild(left);
-
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.gap = "12px";
-    right.style.alignItems = "center";
-    top.appendChild(right);
-
-const play = document.createElement("a");
-play.href = "#";
-play.textContent = "Play";
-play.addEventListener("click", (e) => {
-  e.preventDefault();
-
-  // Do what Meta used to do (highlight + show metadata)
-  setNowPlaying(idx);
-  showSongMeta(idx);
-
-  // Then do normal Play behavior
-  loadIntoMainPlayer(idx, true);
-});
-right.appendChild(play);
-
-const dl = document.createElement("a");
-dl.href = url;
-
-// ✅ sets dl.download correctly for /v1/audio?path=... and normal urls
-applyDownloadFilenameFromHref(dl);
-
-dl.textContent = "Download";
-right.appendChild(dl);
-
-// (Meta button removed)
-
-
-    const metaLine = document.createElement("div");
-    metaLine.className = "small";
-    metaLine.style.marginTop = "6px";
-    const parts = [];
-    parts.push(createdAt || nowIso());
-    if(taskId) parts.push("task " + taskId);
-    parts.push("output " + (Number(outputIndex) + 1));
-    metaLine.textContent = parts.join("  •  ");
-    row.appendChild(metaLine);
-
-    $("songList").prepend(row);
+      if (dlA){
+        applyDownloadFilenameFromHref(dlA);
+      }
+    }
     return idx;
   }
+
+  const idx = songs.length;
+
+  // decide the visible title NOW (meta.title preferred)
+  const metaObj = (meta && typeof meta === "object") ? meta : {};
+  const displayTitle = pickSongDisplayTitle(metaObj, label);
+
+  const dlName = downloadBasename(downloadName);
+
+  songs.push({
+    url,
+    label: displayTitle,
+    taskId,
+    outputIndex,
+    createdAt,
+    meta: metaObj,
+    serverItem,
+    downloadName: dlName
+  });
+
+  songUrlToIndex.set(url, idx);
+  songUrlToMeta.set(url, Object.assign({}, metaObj));
+
+  const row = document.createElement("div");
+  row.setAttribute("data-song-index", String(idx));
+  row.style.padding = "10px";
+  row.style.border = "1px solid rgba(255,255,255,.08)";
+  row.style.borderRadius = "12px";
+  row.style.background = "rgba(0,0,0,.18)";
+
+  const top = document.createElement("div");
+  top.style.display = "flex";
+  top.style.justifyContent = "space-between";
+  top.style.gap = "10px";
+  top.style.flexWrap = "wrap";
+  row.appendChild(top);
+
+  const left = document.createElement("div");
+  left.className = "small __ncz_caption__";
+  left.textContent = displayTitle || `Song ${idx + 1}`;
+  top.appendChild(left);
+
+  const right = document.createElement("div");
+  right.style.display = "flex";
+  right.style.gap = "12px";
+  right.style.alignItems = "center";
+  top.appendChild(right);
+
+  const play = document.createElement("a");
+  play.href = "#";
+  play.textContent = "Play";
+  play.addEventListener("click", (e) => {
+    e.preventDefault();
+    setNowPlaying(idx);
+    showSongMeta(idx);
+    loadIntoMainPlayer(idx, true);
+  });
+  right.appendChild(play);
+
+  const dl = document.createElement("a");
+  dl.href = url;
+  applyDownloadFilenameFromHref(dl);
+  dl.textContent = "Download";
+  right.appendChild(dl);
+
+  const metaLine = document.createElement("div");
+  metaLine.className = "small";
+  metaLine.style.marginTop = "6px";
+  const parts = [];
+  parts.push(createdAt || nowIso());
+  if(taskId) parts.push("task " + taskId);
+  parts.push("output " + (Number(outputIndex) + 1));
+  metaLine.textContent = parts.join("  •  ");
+  row.appendChild(metaLine);
+
+  $("songList").prepend(row);
+  return idx;
+}
+
 
 
 function onPlayerEnded(){
