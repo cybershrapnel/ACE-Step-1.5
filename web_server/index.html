@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MEQUAVIS ACE-Step AI Music Generator</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="static/favicon.ico">
+<link rel="apple-touch-icon" href="https://info.nanocheeze.com/images/ncz.png">
   <style>
     :root{
       --bg:#0b0d12; --card:#121726; --card2:#0f1320; --text:#e9eefc; --muted:#a9b3cf;
@@ -139,7 +140,7 @@
 /* Scrollable song list so it doesn't extend the page forever */
 .songListWrap{
   margin-top: 8px;
-  max-height: clamp(260px, 45vh, 560px);
+  max-height: clamp(260px, 85vh, 960px);
   overflow-y: auto;
   padding-right: 6px;           /* keeps scrollbar off the content */
   border: 1px solid rgba(255,255,255,.08);
@@ -4769,6 +4770,788 @@ initVideoUrls();
       if (img) img.style.display = "none";
     }, 1000);
   });
+})();
+
+
+
+// CHAIN-IT Banner (single rotating banner below the "Please download your songs" info box)
+// - Put your banner images in: static/banners/
+// - Update BANNER_FILES with the filenames you place there
+// - Clicking the banner opens the existing Chain-it popup
+(() => {
+  "use strict";
+
+  // -----------------------
+  // CONFIG
+  // -----------------------
+  const BANNER_FILES = [
+    // put your actual filenames in static/banners/ (png/jpg/webp)
+    "chainit-1.png",
+    "chainit-2.png",
+    "chainit-3.png",
+  ];
+
+  const ROTATE_MS = 9500;        // time between slides
+  const SLIDE_MS  = 920;         // slide animation duration
+
+  const STYLE_ID   = "__ncz_chainit_styles__";
+  const OVERLAY_ID = "__ncz_chainit_overlay__";
+  const MODAL_ID   = "__ncz_chainit_modal__";
+
+  const BANNER_WRAP_ID  = "__ncz_chainit_banner_wrap__";
+  const BANNER_FRAME_ID = "__ncz_chainit_banner_frame__";
+  const BANNER_TRACK_ID = "__ncz_chainit_banner_track__";
+  const BANNER_IMG_A_ID = "__ncz_chainit_banner_img_a__";
+  const BANNER_IMG_B_ID = "__ncz_chainit_banner_img_b__";
+
+  // fallback (present in your page text)
+  const FALLBACK_LTC_ADDR = "LeWKV2SwbSr1YotCSD99pnTSTA53xcQk2Z";
+
+  function $(id){ return document.getElementById(id); }
+
+  // If your app is served under /ace, static paths must be /ace/static/...
+  function basePrefix(){
+    return location.pathname.startsWith("/ace/") ? "/ace" : "";
+  }
+  function staticUrl(rel){
+    rel = String(rel || "").replace(/^\/+/, "");
+    return `${basePrefix()}/static/${rel}`;
+  }
+  function bannerUrl(filename){
+    return staticUrl(`banners/${String(filename || "").replace(/^\/+/, "")}`);
+  }
+
+  function findLitecoinAddressOnPage(){
+    const text = (document.body && (document.body.innerText || document.body.textContent))
+      ? (document.body.innerText || document.body.textContent)
+      : "";
+    const re = /\b(ltc1[0-9a-z]{25,90}|[LM3][a-km-zA-HJ-NP-Z1-9]{26,34})\b/g;
+    let m;
+    while((m = re.exec(text))){
+      const candidate = (m[1] || "").trim();
+      if(candidate.length >= 26) return candidate;
+    }
+    return "";
+  }
+
+  // -----------------------
+  // MODAL (same behavior)
+  // -----------------------
+  function ensureStyles(){
+    if ($(STYLE_ID)) return;
+
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      /* overlay + modal */
+      #${OVERLAY_ID}{
+        position:fixed; inset:0;
+        background: rgba(0,0,0,.55);
+        z-index: 10000000;
+        display:none;
+      }
+      #${OVERLAY_ID}.__show__{ display:block; }
+
+      #${MODAL_ID}{
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(720px, calc(100vw - 28px));
+        max-height: min(78vh, 620px);
+        overflow: auto;
+        z-index: 10000001;
+        display:none;
+
+        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+        border: 1px solid rgba(255,255,255,.10);
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.55);
+        backdrop-filter: blur(10px);
+      }
+      #${MODAL_ID}.__show__{ display:block; }
+
+      #${MODAL_ID} .__hd__{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        padding: 14px 14px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: linear-gradient(180deg, rgba(18,23,38,.85), rgba(18,23,38,.35));
+      }
+      #${MODAL_ID} .__title__{
+        font-weight: 900;
+        font-size: 14px;
+      }
+      #${MODAL_ID} .__close__{
+        border:0;
+        background: rgba(255,255,255,.08);
+        color: rgba(233,238,252,.95);
+        padding: 8px 10px;
+        border-radius: 12px;
+        cursor:pointer;
+        font-weight: 900;
+        line-height: 1;
+      }
+      #${MODAL_ID} .__close__:hover{ background: rgba(255,255,255,.12); }
+
+      #${MODAL_ID} .__bd__{
+        padding: 14px;
+        color: rgba(233,238,252,.95);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      #${MODAL_ID} .__card__{
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.22);
+        border-radius: 12px;
+        padding: 12px;
+        margin-top: 10px;
+      }
+      #${MODAL_ID} .__mono__{ font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace); }
+      #${MODAL_ID} .__muted__{ color: rgba(169,179,207,.95); }
+      #${MODAL_ID} .__row__{
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        align-items:center;
+        margin-top: 10px;
+      }
+      #${MODAL_ID} input[type="text"]{
+        width: 160px;
+        background: rgba(7,10,18,.65);
+        color: rgba(233,238,252,.95);
+        border:1px solid rgba(255,255,255,.12);
+        border-radius: 12px;
+        padding: 9px 10px;
+        font-size: 13px;
+        outline: none;
+      }
+      #${MODAL_ID} .__btn__{
+        border:0;
+        background: rgba(106,166,255,.18);
+        color: rgba(233,238,252,.95);
+        padding: 9px 10px;
+        border-radius: 12px;
+        cursor:pointer;
+        font-weight: 800;
+        font-size: 12px;
+      }
+      #${MODAL_ID} .__btn__:hover{ background: rgba(106,166,255,.25); }
+
+      /* banner */
+      #${BANNER_WRAP_ID}{
+        margin: 14px 0 2px;
+        display:flex;
+        justify-content:center;
+      }
+      #${BANNER_WRAP_ID} a{
+        display:block;
+        text-decoration:none;
+        color: inherit;
+        width: min(720px, calc(100vw - 28px));
+      }
+      #${BANNER_FRAME_ID}{
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.18);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 14px 40px rgba(0,0,0,.40);
+      }
+      #${BANNER_TRACK_ID}{
+        display:flex;
+        width: 200%;
+        transform: translateX(0%);
+        transition: transform ${SLIDE_MS}ms ease;
+        will-change: transform;
+      }
+      #${BANNER_TRACK_ID} .__pane__{
+        width: 50%;
+        flex: 0 0 50%;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        padding: 12px;
+        gap: 10px;
+      }
+      #${BANNER_TRACK_ID} img{
+        display:block;
+        max-width: 100%;
+        height: auto;
+        border-radius: 12px;
+      }
+      #${BANNER_TRACK_ID} .__label__{
+        font-weight: 1000;
+        letter-spacing: .5px;
+        font-size: 14px;
+        opacity: .95;
+      }
+      #${BANNER_WRAP_ID} a:hover #${BANNER_FRAME_ID}{
+        border-color: rgba(255,255,255,.18);
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function ensureModal(){
+    ensureStyles();
+
+    let overlay = $(OVERLAY_ID);
+    if (!overlay){
+      overlay = document.createElement("div");
+      overlay.id = OVERLAY_ID;
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) hideModal();
+      });
+      document.body.appendChild(overlay);
+    }
+
+    let modal = $(MODAL_ID);
+    if (!modal){
+      modal = document.createElement("div");
+      modal.id = MODAL_ID;
+      modal.innerHTML = `
+  <div class="__hd__">
+    <div class="__title__">Chain-it! • NanoCheeZe Blockchain Upload</div>
+    <button type="button" class="__close__" id="__ncz_chainit_close__" title="Close">✕</button>
+  </div>
+  <div class="__bd__">
+    <div class="__card__">
+      <div style="font-weight:900; margin-bottom:6px;">Pricing</div>
+      <div class="__muted__">
+        Send <span class="__mono__">~0.1 LTC per MB</span> to upload your song to the NanoCheeZe blockchain.
+        (Approximate is fine — if it’s <span class="__mono__">5.4 MB</span> and you send <span class="__mono__">5 LTC</span> to store ~5 MB, I probably won’t argue.)
+      </div>
+
+      <div class="__row__">
+        <div class="__muted__">Estimate:</div>
+        <input type="text" id="__ncz_chainit_mb__" placeholder="MB (e.g. 5.4)">
+        <div class="__muted__">→</div>
+        <div><span class="__mono__" id="__ncz_chainit_cost__">—</span> <span class="__muted__">LTC (est.)</span></div>
+      </div>
+    </div>
+
+    <div class="__card__">
+      <div style="font-weight:900; margin-bottom:6px;">Send LTC to</div>
+      <div class="__mono__" id="__ncz_chainit_addr__">—</div>
+      <div class="__row__">
+        <button type="button" class="__btn__" id="__ncz_chainit_copy__">Copy address</button>
+        <button type="button" class="__btn__" id="__ncz_chainit_close2__">Close</button>
+      </div>
+      <div class="__muted__" style="margin-top:10px;">
+        After you send, include the song name/filename (or the URL) when you message me so I can match it up.
+      </div>
+    </div>
+
+    <div class="__card__">
+      <div style="font-weight:900; margin-bottom:6px;">Other storage options (FYI)</div>
+      <div class="__muted__">
+        I <b>can</b> store files directly on Litecoin too, but it’s more expensive and I don’t like doing it.<br>
+        BTC is possible as well… but that’s rich people stuff.
+<br><br>
+Also, You can use my old MEQUAVIS app and the NanoCheeZe coin running locally to upload your files for free if you want to do it yourself. But I won't lie, It's a tedious process and even I have trouble with getting it done successfully. Everything has to go flawless. There are ways to resume or recover from a failure but it's a pain to deal with. But you can do it yourself. And it has options to upload to about 13 different chains including Bitcoin, Litecoin, Feathercoin, Dogecoin, Mooncoin, Dimecoin, Gaspcoin, NanoCheeZe. It has support for Ethereum and Linea/Moonbeam too but I didn't publish that stuff. You can also use my app to retrieve things from the chain.
+      </div>
+    </div>
+  </div>
+`;
+
+      document.body.appendChild(modal);
+
+      modal.querySelector("#__ncz_chainit_close__")?.addEventListener("click", (e) => { e.preventDefault(); hideModal(); });
+      modal.querySelector("#__ncz_chainit_close2__")?.addEventListener("click", (e) => { e.preventDefault(); hideModal(); });
+
+      modal.querySelector("#__ncz_chainit_copy__")?.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const btn = e.currentTarget;
+        const addr = String(modal.querySelector("#__ncz_chainit_addr__")?.textContent || "").trim();
+        if(!addr || addr === "—") return;
+
+        try{
+          await navigator.clipboard.writeText(addr);
+          btn.textContent = "Copied ✅";
+          setTimeout(() => (btn.textContent = "Copy address"), 1200);
+        }catch{
+          const tmp = document.createElement("input");
+          tmp.value = addr;
+          tmp.style.position = "fixed";
+          tmp.style.left = "-9999px";
+          document.body.appendChild(tmp);
+          tmp.select();
+          try { document.execCommand("copy"); } catch {}
+          document.body.removeChild(tmp);
+          btn.textContent = "Copied ✅";
+          setTimeout(() => (btn.textContent = "Copy address"), 1200);
+        }
+      });
+
+      const mbEl = modal.querySelector("#__ncz_chainit_mb__");
+      const costEl = modal.querySelector("#__ncz_chainit_cost__");
+      function updateCost(){
+        const raw = String(mbEl?.value || "").trim().replace(",", ".");
+        const mb = Number(raw);
+        if(!Number.isFinite(mb) || mb <= 0){
+          costEl.textContent = "—";
+          return;
+        }
+        const cost = mb * 0.1;
+        costEl.textContent = cost.toFixed(cost >= 10 ? 1 : 2);
+      }
+      mbEl?.addEventListener("input", updateCost);
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") hideModal();
+      });
+    }
+
+    return { overlay: $(OVERLAY_ID), modal: $(MODAL_ID) };
+  }
+
+  function showModal(){
+    const { overlay, modal } = ensureModal();
+    const addr = findLitecoinAddressOnPage() || FALLBACK_LTC_ADDR;
+    modal.querySelector("#__ncz_chainit_addr__").textContent = addr;
+    overlay.classList.add("__show__");
+    modal.classList.add("__show__");
+  }
+
+  function hideModal(){
+    $(OVERLAY_ID)?.classList.remove("__show__");
+    $(MODAL_ID)?.classList.remove("__show__");
+  }
+
+  // -----------------------
+  // FIND TARGET BOX (SAFE: searches ONLY inside body, never climbs past body)
+  // -----------------------
+  function findDownloadInfoBoxContainer(){
+    const needle = "please download your songs";
+    if (!document.body) return null;
+
+    // Search only within BODY so we never end up at <html>
+    const all = Array.from(document.body.querySelectorAll("*"));
+    let best = null;
+    let bestLen = Infinity;
+
+    for (const el of all){
+      const t = (el.textContent || "").trim().toLowerCase();
+      if (t && t.includes(needle)){
+        if (t.length < bestLen){
+          best = el;
+          bestLen = t.length;
+        }
+      }
+    }
+    if (!best) return null;
+
+    // Prefer a card/container around it, but still within BODY
+    const container =
+      (best.closest && best.closest(".__card__, .card, div, section, article")) ||
+      best;
+
+    // Never return BODY/HTML/HEAD here
+    const tag = (container && container.tagName) ? container.tagName.toUpperCase() : "";
+    if (tag === "HTML" || tag === "HEAD") return null;
+    return container;
+  }
+
+  function safeInsertAfter(target, node){
+    if (!node || !document.body) return false;
+
+    if (!target || target.nodeType !== 1){
+      document.body.appendChild(node);
+      return true;
+    }
+
+    const tag = (target.tagName || "").toUpperCase();
+
+    // NEVER try to insert adjacent to HTML/HEAD/BODY
+    if (tag === "HTML" || tag === "HEAD" || tag === "BODY"){
+      document.body.appendChild(node);
+      return true;
+    }
+
+    const parent = target.parentNode;
+    if (!parent || parent.nodeType !== 1){
+      document.body.appendChild(node);
+      return true;
+    }
+
+    parent.insertBefore(node, target.nextSibling);
+    return true;
+  }
+
+  // -----------------------
+  // INSERT BANNER
+  // -----------------------
+  function ensureBanner(){
+    ensureStyles();
+    if ($(BANNER_WRAP_ID)) return $(BANNER_WRAP_ID);
+
+    const files = (Array.isArray(BANNER_FILES) ? BANNER_FILES : []).filter(Boolean);
+    if (!files.length) {
+      console.warn("[chain-it banner] No BANNER_FILES configured.");
+      return null;
+    }
+
+    const wrap = document.createElement("div");
+    wrap.id = BANNER_WRAP_ID;
+
+    wrap.innerHTML = `
+      <a href="#" id="__ncz_chainit_banner_click__" aria-label="Chain-It">
+        <div id="${BANNER_FRAME_ID}">
+          <div id="${BANNER_TRACK_ID}">
+            <div class="__pane__">
+              <img id="${BANNER_IMG_A_ID}" alt="Chain-It banner">
+              <div class="__label__">Chain-It</div>
+            </div>
+            <div class="__pane__">
+              <img id="${BANNER_IMG_B_ID}" alt="Chain-It banner">
+              <div class="__label__">Chain-It</div>
+            </div>
+          </div>
+        </div>
+      </a>
+    `;
+
+    // Insert under the target box; fallback near song list
+    const target = findDownloadInfoBoxContainer();
+    if (!safeInsertAfter(target, wrap)){
+      const songList = document.getElementById("songList");
+      if (songList?.parentElement) songList.parentElement.insertBefore(wrap, songList);
+      else document.body.appendChild(wrap);
+    }
+
+    wrap.querySelector("#__ncz_chainit_banner_click__")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      showModal();
+    });
+
+    return wrap;
+  }
+
+  // -----------------------
+  // ROTATION / SLIDE
+  // -----------------------
+  function startRotation(){
+    const wrap = ensureBanner();
+    if (!wrap) return;
+
+    const files = BANNER_FILES.filter(Boolean);
+    const imgA = $(BANNER_IMG_A_ID);
+    const imgB = $(BANNER_IMG_B_ID);
+    const track = $(BANNER_TRACK_ID);
+
+    if (!imgA || !imgB || !track) return;
+
+    let idx = 0;
+    let busy = false;
+
+    function setImg(img, i){
+      const f = files[(i + files.length) % files.length];
+      img.src = bannerUrl(f);
+    }
+
+    setImg(imgA, 0);
+    setImg(imgB, files.length > 1 ? 1 : 0);
+
+    if (files.length <= 1) return;
+
+    function slideNext(){
+      if (busy) return;
+      busy = true;
+
+      const nextIdx = (idx + 1) % files.length;
+      const afterNextIdx = (idx + 2) % files.length;
+
+      setImg(imgB, nextIdx);
+
+      track.style.transition = `transform ${SLIDE_MS}ms ease`;
+      track.style.transform = "translateX(-50%)";
+
+      const done = () => {
+        track.removeEventListener("transitionend", done);
+
+        idx = nextIdx;
+        setImg(imgA, idx);
+        setImg(imgB, afterNextIdx);
+
+        track.style.transition = "none";
+        track.style.transform = "translateX(0%)";
+        void track.offsetWidth;
+
+        busy = false;
+      };
+
+      track.addEventListener("transitionend", done, { once: true });
+    }
+
+    setInterval(slideNext, ROTATE_MS);
+
+    imgA.addEventListener("error", () => console.warn("[chain-it banner] imgA failed:", imgA.src));
+    imgB.addEventListener("error", () => console.warn("[chain-it banner] imgB failed:", imgB.src));
+  }
+
+  function init(){
+    ensureModal();
+    ensureBanner();
+    startRotation();
+    console.log("[chain-it banner] enabled");
+  }
+
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    init();
+  } else {
+    window.addEventListener("DOMContentLoaded", init, { once: true });
+  }
+})();
+
+
+
+
+
+//reverse order list
+// Song List reverse toggle (FAST: CSS-only reorder + symmetric nav override when reversed)
+(() => {
+  "use strict";
+
+  const BTN_ID   = "__ncz_songlist_reverse_btn__";
+  const STYLE_ID = "__ncz_songlist_reverse_style__";
+  const STORE_KEY = "NCZ_SONGLIST_REVERSED";
+  const REV_CLASS = "__ncz_songlist_reversed__";
+
+  const SONG_LIST_ID = "songList";
+  const PLAYER_ID = "player";
+
+  const $ = (id) => document.getElementById(id);
+
+  function ensureStyles(){
+    if ($(STYLE_ID)) return;
+
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      /* Reverse VISUAL order without touching DOM nodes */
+      #${SONG_LIST_ID}.${REV_CLASS}{
+        display: flex !important;        /* overrides inline display:grid */
+        flex-direction: column-reverse;  /* flip order */
+        gap: 8px;                         /* keep your spacing */
+        padding: 10px;                    /* keep your padding */
+      }
+
+      /* Button styling (small, fits next to label) */
+      #${BTN_ID}{
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+        border-radius: 12px !important;
+        background: rgba(255,255,255,.08) !important;
+        border: 1px solid rgba(255,255,255,.10) !important;
+        color: var(--text) !important;
+        cursor: pointer !important;
+        font-weight: 800 !important;
+        line-height: 1.1 !important;
+        white-space: nowrap !important;
+      }
+      #${BTN_ID}:hover{ background: rgba(255,255,255,.12) !important; }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function findSongListLabelEl(){
+    // Looks for the "Song List" label near #songList
+    const list = $(SONG_LIST_ID);
+    if (!list) return null;
+
+    // Prefer the nearest .small before the wrap/list
+    const root = list.closest("#resultBox") || document;
+    const smalls = Array.from(root.querySelectorAll(".small"));
+    for (const el of smalls) {
+      if ((el.textContent || "").trim() === "Song List") return el;
+    }
+    return null;
+  }
+
+  function ensureButton(){
+    let btn = $(BTN_ID);
+    if (btn) return btn;
+
+    const label = findSongListLabelEl();
+    if (!label) {
+      console.warn("[songlist-rev] Could not find the 'Song List' label element.");
+      return null;
+    }
+
+    // Turn the label line into a row: "Song List" (left) + button (right)
+    label.style.display = "flex";
+    label.style.alignItems = "center";
+    label.style.justifyContent = "space-between";
+    label.style.gap = "10px";
+
+    btn = document.createElement("button");
+    btn.id = BTN_ID;
+    btn.type = "button";
+    btn.textContent = "Reverse";
+    btn.title = "Reverse Song List order";
+    label.appendChild(btn);
+
+    return btn;
+  }
+
+  function isReversed(){
+    const list = $(SONG_LIST_ID);
+    return !!list && list.classList.contains(REV_CLASS);
+  }
+
+  function focusCurrent({behavior="auto"} = {}){
+    const list = $(SONG_LIST_ID);
+    if (!list) return;
+
+    const idx = (typeof window.currentSongIndex === "number") ? window.currentSongIndex : -1;
+    if (idx < 0) return;
+
+    const row = document.querySelector(`#${SONG_LIST_ID} [data-song-index="${idx}"]`);
+    if (!row) return;
+
+    const wrap = row.closest(".songListWrap") || document.querySelector(".songListWrap");
+    if (!wrap) {
+      row.scrollIntoView({ behavior, block: "nearest" });
+      return;
+    }
+
+    const rowRect = row.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const fullyVisible = rowRect.top >= wrapRect.top && rowRect.bottom <= wrapRect.bottom;
+    if (fullyVisible) return;
+
+    const rowTopInWrap = (rowRect.top - wrapRect.top) + wrap.scrollTop;
+    const targetTop = rowTopInWrap - (wrap.clientHeight / 2) + (rowRect.height / 2);
+    wrap.scrollTo({ top: Math.max(0, targetTop), behavior });
+  }
+
+  function setReversed(on){
+    const list = $(SONG_LIST_ID);
+    const btn  = $(BTN_ID);
+    if (!list || !btn) return;
+
+    list.classList.toggle(REV_CLASS, !!on);
+    btn.textContent = on ? "Normal" : "Reverse";
+    btn.title = on ? "Restore normal order" : "Reverse Song List order";
+
+    try { localStorage.setItem(STORE_KEY, on ? "1" : "0"); } catch {}
+
+    // Keep the current song visible after flipping
+    focusCurrent({ behavior: "auto" });
+  }
+
+  // --- Symmetry helpers (only active when reversed is ON) ---
+  function getIndexSafe(){
+    if (typeof window.currentSongIndex === "number" && window.currentSongIndex >= 0) return window.currentSongIndex;
+
+    const player = $(PLAYER_ID);
+    const src = (player?.currentSrc || player?.src || "").trim();
+    if (!src || !Array.isArray(window.songs)) return -1;
+
+    const i = window.songs.findIndex(s => s && (s.url === src));
+    return i;
+  }
+
+  function goDelta(delta){
+    if (!Array.isArray(window.songs) || typeof window.loadIntoMainPlayer !== "function") return;
+
+    const base = getIndexSafe();
+    if (base < 0) return;
+
+    const next = base + delta;
+    if (next < 0 || next >= window.songs.length) return;
+
+    window.loadIntoMainPlayer(next, true);
+    try { window.currentSongIndex = next; } catch {}
+  }
+
+  // Track what was playing *before* ended fires (so we can override safely)
+  let lastPlayingIdx = -1;
+  function updateLastPlayingIdx(){
+    const i = getIndexSafe();
+    if (i >= 0) lastPlayingIdx = i;
+  }
+
+  function installSymmetryOverrides(){
+    const player = $(PLAYER_ID);
+    if (player && !player.dataset.__nczRevBound__) {
+      player.dataset.__nczRevBound__ = "1";
+
+      // keep lastPlayingIdx fresh
+      player.addEventListener("play", updateLastPlayingIdx);
+      player.addEventListener("loadedmetadata", updateLastPlayingIdx);
+      player.addEventListener("timeupdate", () => { /* cheap, throttled by browser */ updateLastPlayingIdx(); });
+
+      // Override auto-next direction when reversed is ON.
+      // Your original handler runs first; we re-route after it.
+      player.addEventListener("ended", () => {
+        if (!isReversed()) return;
+        if (!Array.isArray(window.songs) || typeof window.loadIntoMainPlayer !== "function") return;
+
+        const base = (lastPlayingIdx >= 0) ? lastPlayingIdx : getIndexSafe();
+        if (base < 0) return;
+
+        // In reversed mode, "next" should go forward (+1) instead of (-1)
+        const desired = base + 1;
+        if (desired >= 0 && desired < window.songs.length) {
+          window.loadIntoMainPlayer(desired, true);
+          try { window.currentSongIndex = desired; } catch {}
+        }
+      });
+    }
+
+    // Intercept Shift+Arrow navigation (capture) ONLY when reversed is ON
+    window.addEventListener("keydown", (e) => {
+      if (!isReversed()) return;
+      if (!e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      // In reversed mode:
+      // Shift+Left = Prev (older) => -1
+      // Shift+Right = Next (newer) => +1
+      goDelta(e.key === "ArrowLeft" ? -1 : +1);
+    }, true);
+
+    // Intercept the Prev/Next button clicks created by your other script (capture) ONLY when reversed is ON
+    document.addEventListener("click", (e) => {
+      if (!isReversed()) return;
+
+      const btn = e.target?.closest?.('button[title="Previous track (Shift+Left)"], button[title="Next track (Shift+Right)"]');
+      if (!btn) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      if ((btn.getAttribute("title") || "").startsWith("Previous")) goDelta(-1);
+      else goDelta(+1);
+    }, true);
+  }
+
+  // ---- Init ----
+  ensureStyles();
+
+  const btn = ensureButton();
+  if (!btn) return;
+
+  installSymmetryOverrides();
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    setReversed(!isReversed());
+  });
+
+  // restore saved state
+  let saved = false;
+  try { saved = localStorage.getItem(STORE_KEY) === "1"; } catch {}
+  setReversed(saved);
+
+  console.log("[songlist-rev] Ready. Reverse toggle added next to 'Song List'.");
 })();
 
 
