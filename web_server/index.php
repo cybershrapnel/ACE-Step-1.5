@@ -3,11 +3,18 @@
 //This is meant to be hosted on a seperate server, I host this on a shared godaddy server and it proxies my proxy to my actual rest-api server.
 //run the proxy pyton server to connect, will need the htaccess file as well.
 
+
 // CHANGE THIS:
-$UPSTREAM = 'http://*.*.*.*'; // or http://YOUR_PUBLIC_HOST:8080 change to your server ip
+$UPSTREAM = 'http://*.*.*.*'; // or http://YOUR_PUBLIC_HOST:8080
 
 // --- get upstream path from rewrite param ---
 $u = isset($_GET['u']) ? $_GET['u'] : '/';
+
+// normalize each path segment: decode then re-encode safely
+$u = preg_replace_callback('~[^/]+~', function($m){
+    return rawurlencode(rawurldecode($m[0]));
+}, $u);
+
 if ($u === '' || $u === null) $u = '/';
 if ($u[0] !== '/') $u = '/' . $u;
 
