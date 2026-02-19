@@ -15,18 +15,22 @@ UPSTREAM = os.getenv("ACESTEP_UPSTREAM", "http://127.0.0.1:8001").rstrip("/")
 WEB_DIR = os.getenv("WEB_DIR", ".")
 INDEX_PATH = os.path.join(WEB_DIR, "index.html")
 
-# Local audio directory to scan/serve
+# Local audio directory to scan/serve (your "new songs" list)
 AUDIO_DIR = os.getenv(
     "ACESTEP_API_AUDIO_DIR",
     os.path.abspath(os.path.join(os.getcwd(), ".cache", "acestep", "tmp", "api_audio")),
 )
+
+# ✅ Archive folder (same directory as this server script)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ARCHIVE_DIR = os.getenv("ACESTEP_ARCHIVE_DIR", os.path.join(SCRIPT_DIR, "archive"))
 
 # Refresh song list every 5 minutes
 SONG_REFRESH_SECONDS = int(os.getenv("SONG_REFRESH_SECONDS", "300"))
 
 TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
 app = FastAPI()
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 static_path = os.path.join(WEB_DIR, "static")
 if os.path.isdir(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
@@ -55,6 +59,38 @@ def _safe_join_under_audio_dir(filename: str) -> Optional[str]:
     if not full_path.startswith(audio_dir_abs + os.sep) and full_path != os.path.join(audio_dir_abs, filename):
         return None
     return full_path
+
+
+# ✅ Safe join that ALLOWS nested paths under a base directory (for archive browsing)
+def _safe_join_under(base_dir: str, rel_path: str) -> Optional[str]:
+    if rel_path is None:
+        rel_path = ""
+    rel_path = rel_path.strip().replace("\\", "/")
+
+    # allow root browse
+    if rel_path in ("", "."):
+        return os.path.abspath(base_dir)
+
+    # forbid absolute
+    if rel_path.startswith("/"):
+        return None
+    drive, _ = os.path.splitdrive(rel_path)
+    if drive:
+        return None
+
+    norm = os.path.normpath(rel_path).replace("\\", os.sep)
+
+    # forbid traversal
+    if norm == ".." or norm.startswith(".." + os.sep):
+        return None
+
+    base_abs = os.path.abspath(base_dir)
+    full = os.path.abspath(os.path.join(base_abs, norm))
+
+    if not full.startswith(base_abs + os.sep) and full != base_abs:
+        return None
+
+    return full
 
 
 def _load_json(path: str) -> Optional[Dict]:
@@ -395,6 +431,222 @@ async def api_audio(filename: str):
         raise HTTPException(status_code=404, detail="Not found")
 
     return FileResponse(full_path, media_type="audio/mpeg", filename=filename)
+
+
+# ---------------------------
+# ✅ Archive endpoints (DO NOT PROXY THESE)
+# ---------------------------
+def _archive_extract_meta_for_mp3(mp3_full_path: str) -> Dict:
+    """
+    If archive has {same_base}.json next to mp3, pull author/title/metas/caption/etc.
+    """
+    base_no_ext, _ = os.path.splitext(mp3_full_path)
+    json_path = base_no_ext + ".json"
+    meta = _load_json(json_path) if os.path.isfile(json_path) else None
+
+    def _as_str(v) -> str:
+        return v.strip() if isinstance(v, str) else ""
+
+    def _pick_str(*vals) -> str:
+        for v in vals:
+            s = _as_str(v)
+            if s:
+                return s
+        return ""
+
+    job_id = None
+    created_at_epoch: Optional[float] = None
+    audio_index = 0
+    caption = ""
+    metas: Dict = {}
+    author = ""
+    title = ""
+
+    if isinstance(meta, dict):
+        job_id = meta.get("job_id") or None
+        try:
+            if meta.get("created_at") is not None:
+                created_at_epoch = float(meta.get("created_at"))
+        except Exception:
+            created_at_epoch = None
+
+        try:
+            if meta.get("audio_index") is not None:
+                audio_index = int(meta.get("audio_index"))
+        except Exception:
+            audio_index = 0
+
+        metas = meta.get("metas") if isinstance(meta.get("metas"), dict) else {}
+        cap = metas.get("caption")
+        caption = cap if isinstance(cap, str) else ""
+
+        title = _pick_str(metas.get("title"), metas.get("song_title"), meta.get("title"), meta.get("song_title"))
+        author = _pick_str(metas.get("author"), metas.get("artist"), meta.get("author"), meta.get("artist"))
+
+    return {
+        "job_id": job_id,
+        "created_at": _fmt_created_at(created_at_epoch) if created_at_epoch is not None else "",
+        "output_index": audio_index,
+        "caption": caption,
+        "metas": metas,
+        "author": author,
+        "title": title,
+    }
+
+
+def _archive_browse(rel_path: str) -> Dict:
+    base_abs = os.path.abspath(ARCHIVE_DIR)
+    if not os.path.isdir(base_abs):
+        return {"base": base_abs, "path": rel_path or "", "exists": False, "items": []}
+
+    full_dir = _safe_join_under(base_abs, rel_path or "")
+    if not full_dir or not os.path.isdir(full_dir):
+        raise HTTPException(status_code=404, detail="Archive path not found")
+
+    items = []
+    try:
+        with os.scandir(full_dir) as it:
+            for entry in it:
+                name = entry.name
+                # skip dotfiles
+                if name.startswith("."):
+                    continue
+
+                rel_item = os.path.relpath(entry.path, base_abs).replace("\\", "/")
+                try:
+                    st = entry.stat()
+                    mtime = int(st.st_mtime)
+                    size = int(st.st_size)
+                except Exception:
+                    mtime = 0
+                    size = 0
+
+                if entry.is_dir(follow_symlinks=False):
+                    items.append(
+                        {
+                            "type": "dir",
+                            "name": name,
+                            "path": rel_item,
+                            "mtime": mtime,
+                        }
+                    )
+                elif entry.is_file(follow_symlinks=False):
+                    lower = name.lower()
+                    if lower.endswith(".mp3"):
+                        meta_bits = _archive_extract_meta_for_mp3(entry.path)
+                        items.append(
+                            {
+                                "type": "mp3",
+                                "name": name,
+                                "path": rel_item,
+                                "size": size,
+                                "mtime": mtime,
+                                "file": f"/archive/api_audio/{quote(rel_item)}",
+                                "task_id": meta_bits.get("job_id") or os.path.splitext(name)[0],
+                                "output_index": meta_bits.get("output_index", 0),
+                                "created_at": meta_bits.get("created_at", ""),
+                                "label": meta_bits.get("caption", ""),
+                                "prompt": meta_bits.get("caption", ""),
+                                "author": meta_bits.get("author", ""),
+                                "title": meta_bits.get("title", ""),
+                                "metas": meta_bits.get("metas", {}) or {},
+                            }
+                        )
+                    elif lower.endswith(".json"):
+                        items.append(
+                            {
+                                "type": "json",
+                                "name": name,
+                                "path": rel_item,
+                                "size": size,
+                                "mtime": mtime,
+                                "file": f"/archive/api_audio/{quote(rel_item)}",
+                            }
+                        )
+                    else:
+                        # ignore other file types by default
+                        continue
+    except OSError:
+        raise HTTPException(status_code=500, detail="Archive browse failed")
+
+    # dirs first, then newest files
+    items.sort(key=lambda x: (0 if x["type"] == "dir" else 1, -(x.get("mtime") or 0), x.get("name", "")))
+
+    return {"base": base_abs, "path": (rel_path or ""), "exists": True, "items": items}
+
+
+@app.get("/archive/browse")
+async def archive_browse(path: str = ""):
+    return JSONResponse(_archive_browse(path))
+
+
+@app.get("/archive/browse/{subpath:path}")
+async def archive_browse_sub(subpath: str):
+    return JSONResponse(_archive_browse(subpath))
+
+
+@app.get("/archive/api_audio/{rel_path:path}")
+async def archive_api_audio(rel_path: str):
+    base_abs = os.path.abspath(ARCHIVE_DIR)
+    if not os.path.isdir(base_abs):
+        raise HTTPException(status_code=404, detail="Archive dir not found")
+
+    full_path = _safe_join_under(base_abs, rel_path)
+    if not full_path or not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    lower = full_path.lower()
+    if not (lower.endswith(".mp3") or lower.endswith(".json")):
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    media_type = "audio/mpeg" if lower.endswith(".mp3") else "application/json"
+    return FileResponse(full_path, media_type=media_type, filename=os.path.basename(full_path))
+
+
+
+
+# ---- ARCHIVE BASE (same directory as this server file) ----
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+ARCHIVE_DIR = os.path.abspath(os.path.join(SERVER_DIR, "archive"))
+
+def _safe_join_under_archive(rel_path: str) -> Optional[str]:
+    rel = (rel_path or "").lstrip("/").replace("\\", "/")
+    full = os.path.abspath(os.path.join(ARCHIVE_DIR, rel))
+    # allow exactly ARCHIVE_DIR or anything under it
+    if full != ARCHIVE_DIR and not full.startswith(ARCHIVE_DIR + os.sep):
+        return None
+    return full
+
+
+@app.get("/archive/api_audio/{rel_path:path}")
+async def archive_api_audio(rel_path: str):
+    full = _safe_join_under_archive(rel_path)
+    if not full:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not full.lower().endswith(".mp3"):
+        raise HTTPException(status_code=400, detail="Not an mp3")
+    if not os.path.isfile(full):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Serve it
+    return FileResponse(full, media_type="audio/mpeg", filename=os.path.basename(full))
+
+
+@app.get("/archive/meta/{rel_path:path}")
+async def archive_meta(rel_path: str):
+    full = _safe_join_under_archive(rel_path)
+    if not full:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not full.lower().endswith(".json"):
+        raise HTTPException(status_code=400, detail="Not a json")
+    if not os.path.isfile(full):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    meta = _load_json(full) or {}
+    return JSONResponse(meta)
+
+
+
 
 
 # ---------------------------
