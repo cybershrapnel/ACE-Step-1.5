@@ -147,6 +147,91 @@
   border-radius: 12px;
   background: rgba(0,0,0,.12);
 }
+/* Match the "new songs list" dark scrollbar on the left side panel */
+#__ncz_leftbar__ .__ncz_lb_body__,
+#__ncz_leftbar__ #__ncz_music_list__{
+  scrollbar-width: thin;
+  scrollbar-color: rgba(106,166,255,.45) rgba(255,255,255,.08);
+}
+
+/* Chrome / Edge / Safari */
+#__ncz_leftbar__ .__ncz_lb_body__::-webkit-scrollbar,
+#__ncz_leftbar__ #__ncz_music_list__::-webkit-scrollbar{
+  width: 10px;
+}
+
+#__ncz_leftbar__ .__ncz_lb_body__::-webkit-scrollbar-track,
+#__ncz_leftbar__ #__ncz_music_list__::-webkit-scrollbar-track{
+  background: rgba(255,255,255,.06);
+  border-radius: 10px;
+}
+
+#__ncz_leftbar__ .__ncz_lb_body__::-webkit-scrollbar-thumb,
+#__ncz_leftbar__ #__ncz_music_list__::-webkit-scrollbar-thumb{
+  background: rgba(106,166,255,.35);
+  border-radius: 10px;
+}
+
+#__ncz_leftbar__ .__ncz_lb_body__::-webkit-scrollbar-thumb:hover,
+#__ncz_leftbar__ #__ncz_music_list__::-webkit-scrollbar-thumb:hover{
+  background: rgba(106,166,255,.55);
+}
+
+/* Make sure it can actually show a scrollbar */
+#__ncz_right_info__ .__body__{
+  overflow-y: auto;
+  scrollbar-width: thin;                       /* Firefox */
+  scrollbar-color: #2a355c #0b0d12;            /* thumb track (Firefox) */
+}
+
+/* WebKit (Chrome/Edge/Safari) */
+#__ncz_right_info__ .__body__::-webkit-scrollbar{
+  width: 12px;
+  height: 12px;
+}
+
+#__ncz_right_info__ .__body__::-webkit-scrollbar-track{
+  background: #0b0d12;
+  border-radius: 12px;
+}
+
+#__ncz_right_info__ .__body__::-webkit-scrollbar-thumb{
+  background: linear-gradient(180deg, #1e2742, #2a355c);
+  border-radius: 12px;
+  border: 3px solid #0b0d12; /* creates the "inset" look */
+}
+
+#__ncz_right_info__ .__body__::-webkit-scrollbar-thumb:hover{
+  background: linear-gradient(180deg, #2a355c, #3b4a7d);
+}
+
+#__ncz_right_info__ .__body__::-webkit-scrollbar-corner{
+  background: #0b0d12;
+}
+
+/* Red X remove button for NEW song list items */
+.__ncz_remove_btn__{
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255,92,122,.35);
+  background: rgba(255,92,122,.16);
+  color: rgba(255,235,240,.98);
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.__ncz_remove_btn__:hover{
+  background: rgba(255,92,122,.26);
+  border-color: rgba(255,92,122,.55);
+}
+.__ncz_remove_btn__:active{
+  transform: translateY(1px);
+}
 
 /* optional: nicer scrollbar (works in modern browsers) */
 .songListWrap{ scrollbar-width: thin; scrollbar-color: rgba(106,166,255,.45) rgba(255,255,255,.08); }
@@ -154,6 +239,20 @@
 .songListWrap::-webkit-scrollbar-track{ background: rgba(255,255,255,.06); border-radius: 10px; }
 .songListWrap::-webkit-scrollbar-thumb{ background: rgba(106,166,255,.35); border-radius: 10px; }
 .songListWrap::-webkit-scrollbar-thumb:hover{ background: rgba(106,166,255,.55); }
+
+
+/* Make the right cell a positioning context */
+#songList .__song_right__{
+  position: relative;
+}
+
+/* Pin the remove button to bottom-right of the song item */
+#songList .__ncz_remove_btn__{
+  position: absolute !important;
+  right: 2px !important;
+  bottom: 0px !important;
+  margin: 0 !important;
+}
 
   </style>
 </head>
@@ -573,6 +672,64 @@ function pickSongDisplayTitle(meta, fallbackPromptOrLabel){
   const songUrlToMeta = new Map();  // url -> meta (latest/merged)
   let currentSongIndex = -1;
 
+  // ---------- NEW SONG LIST removal (tombstone, no reindex) ----------
+  function findNextNonDeleted(from, step){
+    let i = Number(from) + Number(step);
+    while(i >= 0 && i < songs.length){
+      if(songs[i] && !songs[i].__deleted) return i;
+      i += Number(step);
+    }
+    return null;
+  }
+
+  function removeSongFromNewList(idx, { autoplayNext = true } = {}){
+    idx = Number(idx);
+    const s = songs[idx];
+    if(!s || s.__deleted) return false;
+
+    // mark deleted (keeps indices stable)
+    s.__deleted = true;
+
+    // remove from lookup maps so the same URL can be re-added later
+    if(s.url){
+      songUrlToIndex.delete(s.url);
+      songUrlToMeta.delete(s.url);
+    }
+
+    // remove DOM row
+    const row = document.querySelector(`#songList [data-song-index="${idx}"]`);
+    if(row) row.remove();
+
+    // if we just removed the currently-playing song, move playback
+    if(currentSongIndex === idx){
+      const older = findNextNonDeleted(idx, -1); // older = idx-1
+      const newer = findNextNonDeleted(idx, +1); // newer = idx+1
+      const nextIdx = (older != null) ? older : (newer != null ? newer : null);
+
+      if(nextIdx != null){
+        loadIntoMainPlayer(nextIdx, !!autoplayNext);
+      } else {
+        // nothing left: clear player + UI
+        currentSongIndex = -1;
+        try { window.currentSongIndex = -1; } catch {}
+
+        const player = $("player");
+        try { player.pause(); } catch {}
+        player.removeAttribute("src");
+        player.load();
+
+        $("downloadLink").href = "#";
+        $("downloadLink").removeAttribute("download");
+        $("resultMeta").textContent = "No songs yet.";
+        document.title = "MEQUAVIS ACE-Step AI Music Generator";
+      }
+    }
+
+    return true;
+  }
+
+  // expose (optional) so other helper scripts can call it
+  try { window.removeSongFromNewList = removeSongFromNewList; } catch {}
 
 
   function showSongMeta(i){
@@ -913,6 +1070,7 @@ focusAttention(i);
   top.appendChild(left);
 
   const right = document.createElement("div");
+right.className = "__song_right__";
   right.style.display = "flex";
   right.style.gap = "12px";
   right.style.alignItems = "center";
@@ -923,6 +1081,7 @@ focusAttention(i);
   play.textContent = "Play";
   play.addEventListener("click", (e) => {
     e.preventDefault();
+    window.__nczLastPlaylist = "new";          // ✅ NEW
     setNowPlaying(idx);
     showSongMeta(idx);
     loadIntoMainPlayer(idx, true);
@@ -934,6 +1093,19 @@ focusAttention(i);
   applyDownloadFilenameFromHref(dl);
   dl.textContent = "Download";
   right.appendChild(dl);
+  // ✅ Red X remove button (NEW SONG LIST ONLY)
+  const x = document.createElement("button");
+  x.type = "button";
+  x.className = "__ncz_remove_btn__";
+  x.textContent = "✖";
+  x.title = "Remove from Song List";
+  x.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    removeSongFromNewList(idx, { autoplayNext: true });
+  });
+  right.appendChild(x);
+
 
   const metaLine = document.createElement("div");
   metaLine.className = "small";
@@ -952,11 +1124,20 @@ focusAttention(i);
 
 
 function onPlayerEnded(){
-  const next = currentSongIndex - 1; // newest-first list: next visible item is "below" (older)
-  if(next >= 0 && next < songs.length){
+  // ✅ Prefer playlist-aware navigation (archive vs new)
+  if (typeof window.__nczPlayNext === "function") {
+    window.__nczPlayNext({ autoplay: true, reason: "ended" });
+    return;
+  }
+
+   // fallback: old behavior (new songs only) — skip deleted
+  const next = findNextNonDeleted(currentSongIndex, -1);
+  if(next != null){
     loadIntoMainPlayer(next, true);
   }
+
 }
+
 
 
     async function showAllSongs(){
@@ -1300,7 +1481,9 @@ function init(){
     window.loadIntoMainPlayer = loadIntoMainPlayer;
     window.showSongMeta = showSongMeta;
     window.songUrlToMeta = songUrlToMeta;
+    window.addSongToList = addSongToList;     // ✅ NEW (so archive can call it if wanted)
   }catch{}
+
 
   init();
 })();
@@ -1438,6 +1621,94 @@ function init(){
 })();
 
 
+// ✅ Playlist-aware navigation: Next/Prev/Ended follows whichever list you last interacted with.
+// window.__nczLastPlaylist = "new" | "archive"
+(() => {
+  "use strict";
+
+  const player = document.getElementById("player");
+
+  function ensureLast(){
+    if (!window.__nczLastPlaylist) window.__nczLastPlaylist = "new";
+    return window.__nczLastPlaylist;
+  }
+
+  function getSongs(){
+    return Array.isArray(window.songs) ? window.songs : [];
+  }
+
+  function findCurrentNewIndex(){
+    const songs = getSongs();
+
+    let idx = (typeof window.currentSongIndex === "number") ? window.currentSongIndex : -1;
+    if (idx >= 0 && idx < songs.length) return idx;
+
+    const src = (player && (player.currentSrc || player.src) || "").trim();
+    if (!src) return -1;
+    const hit = songs.findIndex(s => s && s.url === src);
+    return hit;
+  }
+
+  // New Songs:
+  // - songs[] grows upward (newer = larger index)
+  // - "Next" should go OLDER => index - 1
+  // - "Prev" should go NEWER => index + 1
+    function stepNew(nextOrPrev /* -1 older, +1 newer */){
+    const songs = getSongs();
+    const load = window.loadIntoMainPlayer;
+
+    if (!songs.length || typeof load !== "function") return false;
+
+    let idx = findCurrentNewIndex();
+    if (idx < 0) idx = songs.length - 1; // default to newest
+
+    // walk until we find a non-deleted target
+    let tgt = idx + nextOrPrev;
+    while(tgt >= 0 && tgt < songs.length){
+      if(songs[tgt] && !songs[tgt].__deleted) break;
+      tgt += nextOrPrev;
+    }
+    if (tgt < 0 || tgt >= songs.length) return false;
+
+    window.__nczLastPlaylist = "new";
+    load(tgt, true);
+    return true;
+  }
+
+
+  function stepArchive(delta /* +1 next, -1 prev */){
+    if (typeof window.__nczArchiveStep !== "function") return false;
+    const ok = window.__nczArchiveStep(delta, { autoplay: true });
+    if (ok) window.__nczLastPlaylist = "archive";
+    return ok;
+  }
+
+  window.__nczPlayNext = function(opts={}){
+    const last = ensureLast();
+
+    if (last === "archive") {
+      if (stepArchive(+1)) return true;
+      return stepNew(-1); // fallback to new list older
+    } else {
+      if (stepNew(-1)) return true; // older
+      return stepArchive(+1);
+    }
+  };
+
+  window.__nczPlayPrev = function(opts={}){
+    const last = ensureLast();
+
+    if (last === "archive") {
+      if (stepArchive(-1)) return true;
+      return stepNew(+1); // fallback to new list newer
+    } else {
+      if (stepNew(+1)) return true; // newer
+      return stepArchive(-1);
+    }
+  };
+
+  console.log("[ncz-nav] playlist-aware next/prev ready");
+})();
 
 
 
@@ -1548,16 +1819,25 @@ function init(){
   }
 
   function goPrev() {
-    // Newest-first list: "Prev" should go to newer (DOM earlier), "Next" goes older (DOM later).
-    // So delta = -1 goes newer, +1 goes older relative to DOM index.
-    if (tryUseAppPlaylist(-1)) return;
+    if (typeof window.__nczPlayPrev === "function") {
+      window.__nczPlayPrev({ autoplay: true, reason: "button" });
+      return;
+    }
+    // fallback old behavior if router isn't present
+    if (tryUseAppPlaylist(+1)) return; // newer
     clickDomPrevNext(-1);
   }
 
   function goNext() {
-    if (tryUseAppPlaylist(+1)) return;
+    if (typeof window.__nczPlayNext === "function") {
+      window.__nczPlayNext({ autoplay: true, reason: "button" });
+      return;
+    }
+    // fallback old behavior if router isn't present
+    if (tryUseAppPlaylist(-1)) return; // older
     clickDomPrevNext(+1);
   }
+
 
   // --- UI injection ---
   const wrap = document.createElement("div");
@@ -1602,8 +1882,9 @@ function init(){
   player.style.flex = "1 1 auto";
   player.style.width = "100%";
 
-  btnPrev.addEventListener("click", (e) => { e.preventDefault(); goNext(); });
-  btnNext.addEventListener("click", (e) => { e.preventDefault(); goPrev(); });
+  btnPrev.addEventListener("click", (e) => { e.preventDefault(); goPrev(); });
+  btnNext.addEventListener("click", (e) => { e.preventDefault(); goNext(); });
+
 
   // Keyboard shortcuts
   window.addEventListener("keydown", (e) => {
@@ -1796,12 +2077,13 @@ function init(){
 })();
 
 // Adds a toggle button that collapses/uncollapses the Base URL + Auth + API Key block
-// Collapses by DEFAULT (unless user previously expanded and we saved it)
+// Button MOVES like your leftbar toggle so it never gets hidden.
 (() => {
   "use strict";
 
   const BTN_ID = "__ncz_toggle_conn__";
-  const STORE_KEY = "NCZ_UI_CONN_COLLAPSED"; // "1" = collapsed, "0" = expanded
+  const HOLDER_ID = "__ncz_conn_btn_holder__";
+  const STORE_KEY = "NCZ_UI_CONN_COLLAPSED"; // "1" collapsed, "0" expanded
 
   const baseUrl = document.getElementById("baseUrl");
   const authMode = document.getElementById("authMode");
@@ -1811,31 +2093,52 @@ function init(){
     return;
   }
 
+  // Find the *actual* card that contains baseUrl (more reliable than ".card .hd")
+  const card = baseUrl.closest(".card");
+  const header = card ? card.querySelector(":scope > .hd") : document.querySelector(".card .hd");
+  const body = card ? card.querySelector(":scope > .bd") : null;
+
+  // The row that contains BOTH columns (baseurl + auth/apikey)
   const leftCol = baseUrl.closest("div");
-  const rightCol = authMode.closest("div");
-  const row = leftCol?.parentElement;
+  const row = leftCol ? leftCol.parentElement : null;
 
-  if (!leftCol || !rightCol || !row) {
-    console.warn("[ncz-collapse] Could not locate layout containers.");
+  if (!card || !header || !body || !row) {
+    console.warn("[ncz-collapse] Could not locate card/header/body/row containers.");
     return;
   }
 
-  // Insert button into the left card header (Create a generation task)
-  const header = document.querySelector(".card .hd");
-  if (!header) {
-    console.warn("[ncz-collapse] Could not find card header.");
-    return;
+  // Idempotent: reuse existing button if it already exists
+  let btn = document.getElementById(BTN_ID);
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.id = BTN_ID;
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.title = "Hide/show Base URL + Auth + API key fields";
   }
 
-  if (document.getElementById(BTN_ID)) return;
+  // A holder above the row (so when expanded, button sits right where you want it)
+  let holder = document.getElementById(HOLDER_ID);
+  if (!holder) {
+    holder = document.createElement("div");
+    holder.id = HOLDER_ID;
+  }
 
-  // Styles
+  // Styles (once)
   const STYLE_ID = "__ncz_toggle_conn_style__";
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement("style");
     st.id = STYLE_ID;
     st.textContent = `
       .__ncz_conn_hidden__ { display: none !important; }
+
+      #${HOLDER_ID}{
+        display:flex;
+        justify-content:flex-end;
+        margin: 0 0 10px 0;
+      }
+
+      /* make sure button is always clickable/visible */
       #${BTN_ID}{
         padding: 8px 10px;
         border-radius: 12px;
@@ -1844,63 +2147,207 @@ function init(){
         background: rgba(255,255,255,.08);
         color: var(--text);
         cursor: pointer;
+        z-index: 5;
       }
       #${BTN_ID}:hover{ background: rgba(255,255,255,.12); }
     `;
     document.head.appendChild(st);
   }
 
-  const btn = document.createElement("button");
-  btn.id = BTN_ID;
-  btn.type = "button";
-  btn.className = "secondary";
-  btn.title = "Hide/show Base URL + Auth + API key fields";
+  // Put holder right above the connection row (only once)
+  if (holder.parentElement !== body) {
+    body.insertBefore(holder, row);
+  }
 
-  header.appendChild(btn);
+  function placeButton(collapsed) {
+    // MOVE the same button node like your leftbar toggle does
+    if (collapsed) {
+      // row is hidden -> move button to header so it can never be hidden
+      header.appendChild(btn);
+      // remove holder if you want (optional) — but leaving it is fine too
+      if (btn.parentElement === holder) holder.removeChild(btn);
+    } else {
+      // row visible -> button lives above the row
+      if (btn.parentElement !== holder) holder.appendChild(btn);
+    }
+  }
 
   function setCollapsed(collapsed) {
-    leftCol.classList.toggle("__ncz_conn_hidden__", collapsed);
-    rightCol.classList.toggle("__ncz_conn_hidden__", collapsed);
+    // Hide/show the entire row (cleaner than hiding the inner cols)
+    row.classList.toggle("__ncz_conn_hidden__", !!collapsed);
+
     btn.textContent = collapsed ? "Expand connection" : "Collapse connection";
+    placeButton(!!collapsed);
+
     try { localStorage.setItem(STORE_KEY, collapsed ? "1" : "0"); } catch {}
   }
 
-  // Default: COLLAPSED.
-  // If user has a saved preference, respect it.
-  let collapsed = true;
+  // Default: EXPANDED (so you can never get stuck)
+  // If you want default collapsed, change this to `let collapsed = true;`
+  let collapsed = false;
   try {
     const saved = localStorage.getItem(STORE_KEY);
-    if (saved === "0") collapsed = false;
     if (saved === "1") collapsed = true;
+    if (saved === "0") collapsed = false;
   } catch {}
 
   setCollapsed(collapsed);
 
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    collapsed = !collapsed;
-    setCollapsed(collapsed);
-  });
+  if (btn.dataset.__nczBound__ !== "1") {
+    btn.dataset.__nczBound__ = "1";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      collapsed = !collapsed;
+      setCollapsed(collapsed);
+    });
+  }
 
-  console.log("[ncz-collapse] Connection toggle added (default collapsed).");
+  console.log("[ncz-collapse] Connection toggle added (moves between header/body, never hidden).");
 })();
 
 
 
-//left panel
-// Left sidebar column (fixed) with collapse/expand arrow button.
-// CHANGE: when COLLAPSED, move the expand button BELOW the "Top" button;
-// when EXPANDED, move it back into the header.
-// Persists state in localStorage.
+
+
+
+
+
+
+//left panel (UPDATED: adds View Music + archive browser)
 (() => {
   "use strict";
 
   const SID_ID = "__ncz_leftbar__";
   const STYLE_ID = "__ncz_leftbar_style__";
   const STORE_KEY = "NCZ_UI_LEFTBAR_COLLAPSED";
+  const STORE_MUSIC_KEY = "NCZ_UI_LEFTBAR_MUSICMODE";
 
   const EXPANDED_W = 260; // px
   const COLLAPSED_W = 56; // px
+
+  const MUSIC_BTN_ACTION = "music";
+  const MUSIC_WRAP_ID = "__ncz_music_wrap__";
+  const MUSIC_LIST_ID = "__ncz_music_list__";
+  const MUSIC_PATH_ID = "__ncz_music_path__";
+  const MUSIC_MSG_ID  = "__ncz_music_msg__";
+
+  // ---------- small helpers ----------
+  const $id = (id) => document.getElementById(id);
+
+  function normBaseUrl(u){
+    u = (u || "").trim();
+    if(!u) return "http://localhost:8001";
+    return u.replace(/\/+$/, "");
+  }
+
+  // Same idea as your main apiFetch, but local to this sidebar script.
+  async function apiFetch(path, {method="GET", body=null, headers={}} = {}){
+    const baseEl = $id("baseUrl");
+    const authEl = $id("authMode");
+    const keyEl  = $id("apiKey");
+
+    const baseUrl = normBaseUrl(baseEl ? baseEl.value : "");
+    const url = baseUrl + path;
+
+    const authMode = authEl ? authEl.value : "none";
+    const apiKey = (keyEl ? keyEl.value : "").trim();
+
+    const hdrs = Object.assign({}, headers);
+    if(method !== "GET" && method !== "HEAD") hdrs["Content-Type"] = "application/json";
+    if(authMode === "header" && apiKey){
+      hdrs["Authorization"] = "Bearer " + apiKey;
+    }
+
+    const resp = await fetch(url, {
+      method,
+      headers: hdrs,
+      body: body ? JSON.stringify(body) : null,
+    });
+
+    let json = null;
+    try { json = await resp.json(); } catch { /* ignore */ }
+
+    if(!resp.ok){
+      const msg = (json && (json.detail || json.error)) ? (json.detail || json.error) : (`HTTP ${resp.status}`);
+      throw new Error(msg);
+    }
+
+    // tolerate {code,data} wrappers
+    if(json && typeof json === "object" && ("code" in json) && ("data" in json)){
+      if(json.code !== 200) throw new Error(json.error || ("API code " + json.code));
+      return json.data;
+    }
+    return json;
+  }
+
+  // Match your base-path logic so /ace prefix works on xtdevelopment.net
+  function absSongUrl(fileOrUrl){
+    const s = String(fileOrUrl || "").trim();
+    if(!s) return "";
+
+    if(/^https?:\/\//i.test(s)) return s;
+
+    const base = normBaseUrl(($id("baseUrl")?.value) || "");
+    try{
+      const b = new URL(base.endsWith("/") ? base : base + "/");
+      const basePath = b.pathname.replace(/\/+$/, "");
+
+      if(s.startsWith("/")){
+        if(basePath && basePath !== "/" && !s.startsWith(basePath + "/")){
+          return b.origin + basePath + s;
+        }
+        return b.origin + s;
+      }
+
+      return new URL(s, b.origin + (basePath || "") + "/").toString();
+    }catch{
+      const base2 = String(base || "").replace(/\/+$/, "");
+      if(s.startsWith("/")){
+        const m = base2.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
+        if(m){
+          const origin = m[1];
+          const path = (m[2] || "").replace(/\/+$/, "");
+          if(path && !s.startsWith(path + "/")) return origin + path + s;
+          return origin + s;
+        }
+        return s;
+      }
+      return base2 + "/" + s.replace(/^\/+/, "");
+    }
+  }
+
+  function joinPath(a,b){
+    a = String(a||"").replace(/^\/+|\/+$/g,"");
+    b = String(b||"").replace(/^\/+|\/+$/g,"");
+    if(!a) return b;
+    if(!b) return a;
+    return a + "/" + b;
+  }
+
+  function parentPath(p){
+    p = String(p||"").replace(/^\/+|\/+$/g,"");
+    if(!p) return "";
+    const parts = p.split("/").filter(Boolean);
+    parts.pop();
+    return parts.join("/");
+  }
+
+function encPathKeepSlash(p){
+  p = String(p || "").replace(/^\/+|\/+$/g, "");
+  if(!p) return "";
+  return p.split("/").map(encodeURIComponent).join("/");
+}
+
+// If something already encoded slashes, undo it so we never request %2F
+function unbreakEncodedSlashes(s){
+  s = String(s || "");
+  // handle double-encoded slash variants too
+  s = s.replace(/%252F/ig, "%2F").replace(/%255C/ig, "%5C");
+  return s.replace(/%2F/ig, "/").replace(/%5C/ig, "/");
+}
+
+
+  function safeArr(v){ return Array.isArray(v) ? v : []; }
 
   // ---------- Styles ----------
   if (!document.getElementById(STYLE_ID)) {
@@ -2003,6 +2450,8 @@ function init(){
         flex-direction: column;
         gap: 8px;
         overflow: auto;
+        min-height: 0;
+        flex: 1 1 auto;
       }
 
       #${SID_ID} .__ncz_lb_item__{
@@ -2083,6 +2532,101 @@ function init(){
         border-color: rgba(106,166,255,.25);
       }
 
+      /* --- Music mode: hide main items + create a dedicated scroll pane --- */
+      #${SID_ID}.__musicmode__ .__ncz_lb_mainitem__{ display:none !important; }
+      #${SID_ID}.__musicmode__ .__ncz_lb_body__{ overflow:hidden !important; }
+
+      #${MUSIC_WRAP_ID}{
+        display:none;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 12px;
+        background: rgba(0,0,0,.12);
+        overflow:hidden;
+        min-height: 0;
+        flex: 1 1 auto;
+      }
+      #${SID_ID}.__musicmode__ #${MUSIC_WRAP_ID}{ display:flex; flex-direction:column; }
+
+      #${MUSIC_WRAP_ID} .__ncz_music_hdr__{
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 8px;
+      }
+      #${MUSIC_WRAP_ID} .__ncz_music_path__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        white-space: nowrap;
+        overflow:hidden;
+        text-overflow: ellipsis;
+        font-family: var(--mono, ui-monospace);
+      }
+      #${MUSIC_WRAP_ID} .__ncz_music_msg__{
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        padding: 6px 10px 0;
+        white-space: pre-wrap;
+      }
+      #${MUSIC_LIST_ID}{
+        overflow:auto;
+        padding: 8px;
+        display:flex;
+        flex-direction:column;
+        gap: 6px;
+        min-height: 0;
+        flex: 1 1 auto;
+      }
+      .__ncz_music_item__{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.18);
+        cursor:pointer;
+        user-select:none;
+      }
+      .__ncz_music_item__:hover{
+        background: rgba(0,0,0,.28);
+        border-color: rgba(106,166,255,.25);
+      }
+      .__ncz_music_item__ .__ico__{
+        width: 26px;
+        height: 26px;
+        border-radius: 10px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.10);
+        flex: 0 0 auto;
+        font-size: 13px;
+      }
+      .__ncz_music_item__ .__txt__{
+        min-width:0;
+        flex: 1 1 auto;
+      }
+      .__ncz_music_item__ .__name__{
+        font-size: 12px;
+        font-weight: 800;
+        color: rgba(233,238,252,.95);
+        white-space: nowrap;
+        overflow:hidden;
+        text-overflow: ellipsis;
+      }
+      .__ncz_music_item__ .__sub__{
+        margin-top: 2px;
+        font-size: 11px;
+        color: rgba(169,179,207,.95);
+        white-space: nowrap;
+        overflow:hidden;
+        text-overflow: ellipsis;
+        font-family: var(--mono, ui-monospace);
+      }
+
       @media (max-width: 700px){
         body.__ncz_leftbar_on__{ padding-left: 0 !important; }
         #${SID_ID}{ box-shadow: 0 10px 30px rgba(0,0,0,.35); }
@@ -2109,7 +2653,34 @@ function init(){
       </div>
 
       <div class="__ncz_lb_body__">
-        <div class="__ncz_lb_item__" data-action="generate" title="Generate">
+        <!-- View Music button goes at top -->
+        <div class="__ncz_lb_item__" data-action="${MUSIC_BTN_ACTION}" title="View Music">
+          <div class="__ncz_lb_icon__">🗂</div>
+          <div class="__ncz_lb_labelwrap__" style="min-width:0">
+            <div class="__ncz_lb_label__" data-role="musicLabel">View Music</div>
+            <div class="__ncz_lb_hint__" data-role="musicHint">Browse archive</div>
+          </div>
+        </div>
+
+        <!-- Scrollable music pane (hidden until music mode) -->
+        <div id="${MUSIC_WRAP_ID}">
+          <div class="__ncz_music_hdr__">
+  <div class="__ncz_music_path__" id="__ncz_music_path__">archive: /</div>
+  <div style="display:flex; gap:8px; align-items:center">
+    <button type="button" class="secondary" id="__ncz_music_addall__"
+      title="Add all currently shown archive songs to Song List"
+      style="padding:6px 10px;border-radius:10px;font-weight:800;font-size:12px;">＋All</button>
+    <button type="button" class="secondary" id="__ncz_music_refresh__"
+      title="Refresh"
+      style="padding:6px 10px;border-radius:10px;font-weight:800;font-size:12px;">↻</button>
+  </div>
+</div>
+
+          <div id="${MUSIC_MSG_ID}" class="__ncz_music_msg__"></div>
+          <div id="${MUSIC_LIST_ID}"></div>
+        </div>
+
+        <div class="__ncz_lb_item__ __ncz_lb_mainitem__" data-action="generate" title="Generate">
           <div class="__ncz_lb_icon__">▶</div>
           <div class="__ncz_lb_labelwrap__" style="min-width:0">
             <div class="__ncz_lb_label__">Generate</div>
@@ -2117,15 +2688,15 @@ function init(){
           </div>
         </div>
 
-        <div class="__ncz_lb_item__" data-action="songs" title="Show all songs">
+        <div class="__ncz_lb_item__ __ncz_lb_mainitem__" data-action="songs" title="Show all songs">
           <div class="__ncz_lb_icon__">🎵</div>
           <div class="__ncz_lb_labelwrap__" style="min-width:0">
-            <div class="__ncz_lb_label__">Songs</div>
+            <div class="__ncz_lb_label__">New Songs</div>
             <div class="__ncz_lb_hint__">Fetch list</div>
           </div>
         </div>
 
-        <div class="__ncz_lb_item__" data-action="health" title="Check server">
+        <div class="__ncz_lb_item__ __ncz_lb_mainitem__" data-action="health" title="Check server">
           <div class="__ncz_lb_icon__">❤</div>
           <div class="__ncz_lb_labelwrap__" style="min-width:0">
             <div class="__ncz_lb_label__">Health</div>
@@ -2133,7 +2704,7 @@ function init(){
           </div>
         </div>
 
-        <div class="__ncz_lb_item__" data-action="top" title="Scroll to top">
+        <div class="__ncz_lb_item__ __ncz_lb_mainitem__" data-action="top" title="Scroll to top">
           <div class="__ncz_lb_icon__">↑</div>
           <div class="__ncz_lb_labelwrap__" style="min-width:0">
             <div class="__ncz_lb_label__">Top</div>
@@ -2143,6 +2714,55 @@ function init(){
       </div>
     `;
     document.body.appendChild(side);
+  } else {
+    // Sidebar exists: ensure View Music button + music pane exist (idempotent upgrade)
+    const body = side.querySelector(".__ncz_lb_body__");
+    if (body && !body.querySelector(`[data-action="${MUSIC_BTN_ACTION}"]`)) {
+      const first = body.firstElementChild;
+
+      const vm = document.createElement("div");
+      vm.className = "__ncz_lb_item__";
+      vm.setAttribute("data-action", MUSIC_BTN_ACTION);
+      vm.title = "View Music";
+      vm.innerHTML = `
+        <div class="__ncz_lb_icon__">🗂</div>
+        <div class="__ncz_lb_labelwrap__" style="min-width:0">
+          <div class="__ncz_lb_label__" data-role="musicLabel">View Music</div>
+          <div class="__ncz_lb_hint__" data-role="musicHint">Browse archive</div>
+        </div>
+      `;
+      body.insertBefore(vm, first || null);
+    }
+
+    if (body && !body.querySelector(`#${MUSIC_WRAP_ID}`)) {
+      const wrap = document.createElement("div");
+      wrap.id = MUSIC_WRAP_ID;
+      wrap.innerHTML = `
+<div class="__ncz_music_hdr__">
+  <div class="__ncz_music_path__" id="__ncz_music_path__">archive: /</div>
+  <div style="display:flex; gap:8px; align-items:center">
+    <button type="button" class="secondary" id="__ncz_music_addall__"
+      title="Add all currently shown archive songs to Song List"
+      style="padding:6px 10px;border-radius:10px;font-weight:800;font-size:12px;">＋All</button>
+    <button type="button" class="secondary" id="__ncz_music_refresh__"
+      title="Refresh"
+      style="padding:6px 10px;border-radius:10px;font-weight:800;font-size:12px;">↻</button>
+  </div>
+</div>
+
+        <div id="${MUSIC_MSG_ID}" class="__ncz_music_msg__"></div>
+        <div id="${MUSIC_LIST_ID}"></div>
+      `;
+      const vmBtn = body.querySelector(`[data-action="${MUSIC_BTN_ACTION}"]`);
+      body.insertBefore(wrap, vmBtn ? vmBtn.nextSibling : body.firstChild);
+    }
+
+    // mark existing main items so music mode can hide them
+    body?.querySelectorAll(`.__ncz_lb_item__[data-action="generate"],
+                           .__ncz_lb_item__[data-action="songs"],
+                           .__ncz_lb_item__[data-action="health"],
+                           .__ncz_lb_item__[data-action="top"]`)
+      ?.forEach(el => el.classList.add("__ncz_lb_mainitem__"));
   }
 
   document.body.classList.add("__ncz_leftbar_on__");
@@ -2157,27 +2777,187 @@ function init(){
     return;
   }
 
-  // Make sure toggle button isn't double-bound
-  if (toggleBtn.dataset.__nczBound__ === "1") return;
-  toggleBtn.dataset.__nczBound__ = "1";
+  const viewMusicItem = body.querySelector(`[data-action="${MUSIC_BTN_ACTION}"]`);
+  const musicWrap = body.querySelector(`#${MUSIC_WRAP_ID}`);
+  const musicList = body.querySelector(`#${MUSIC_LIST_ID}`);
+  const musicPathEl = body.querySelector(`#${MUSIC_PATH_ID}`);
+  const musicMsgEl  = body.querySelector(`#${MUSIC_MSG_ID}`);
+  const refreshBtn  = body.querySelector(`#__ncz_music_refresh__`);
+  // --- Add All (archive -> Song List) ---
+  function ensureAddAllBtn(){
+    let btn = body.querySelector("#__ncz_music_addall__");
+    if(btn) return btn;
 
-  function placeToggle(collapsed) {
-    // Remove special body-toggle class first
-    toggleBtn.classList.remove("__ncz_lb_toggle_in_body__");
+    // If older HTML is still in DOM, inject button next to refresh
+    const hdr = musicWrap?.querySelector(".__ncz_music_hdr__");
+    const refresh = hdr?.querySelector("#__ncz_music_refresh__");
+    if(!hdr || !refresh) return null;
 
-    if (collapsed) {
-      // Move into body, BELOW the Top item
-      // (so order is ... Top, then Toggle)
-      toggleBtn.classList.add("__ncz_lb_toggle_in_body__");
-      toggleBtn.title = "Expand";
-      // Ensure it's after top item
-      body.insertBefore(toggleBtn, topItem.nextSibling);
-    } else {
-      // Move back into header (right side)
-      toggleBtn.title = "Collapse";
-      header.appendChild(toggleBtn);
+    // Ensure a button row container exists
+    let btnRow = refresh.parentElement;
+    if(btnRow === hdr){
+      btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      btnRow.style.alignItems = "center";
+      hdr.appendChild(btnRow);
+      btnRow.appendChild(refresh);
     }
+
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.id = "__ncz_music_addall__";
+    btn.textContent = "＋All";
+    btn.title = "Add all currently shown archive songs to Song List";
+    btn.style.padding = "6px 10px";
+    btn.style.borderRadius = "10px";
+    btn.style.fontWeight = "800";
+    btn.style.fontSize = "12px";
+
+    btnRow.insertBefore(btn, refresh);
+    return btn;
   }
+
+  function buildArchiveMeta(song){
+    const m = (song?.meta && typeof song.meta === "object") ? song.meta : {};
+    return {
+      title: String(song?.title || m?.title || "").trim(),
+      author: String(song?.author || m?.author || "").trim(),
+      signature: String(m?.signature || "").trim(),
+      prompt: String(m?.prompt || m?.caption || m?.label || "").trim(),
+      lyrics: String(m?.lyrics || "").trim(),
+    };
+  }
+
+  async function addAllVisibleArchiveSongsToSongList(){
+    const addFn = window.addSongToList;
+    if(typeof addFn !== "function"){
+      setMusicMsg("addSongToList() not available on window yet.");
+      return;
+    }
+
+    // Prefer DOM-visible rows (so filters/search/hiding still works)
+    const rows = Array.from(musicList.querySelectorAll('.__ncz_music_item__[data-kind="song"]'))
+      .filter(r => r.offsetParent !== null);
+
+    const rendered = window.__nczArchiveRendered || {};
+    const list = Array.isArray(rendered.songs) ? rendered.songs : [];
+
+    // Map base -> song for quick lookup
+    const byBase = new Map(list.map(s => [String(s?.base || ""), s]).filter(([k]) => k));
+
+    let targets = [];
+    if(rows.length){
+      for(const r of rows){
+        const b = String(r.getAttribute("data-base") || "");
+        const s = byBase.get(b);
+        if(s) targets.push(s);
+      }
+    }else{
+      // fallback: whatever we last rendered
+      targets = list.slice();
+    }
+
+    if(!targets.length){
+      setMusicMsg("No archive songs are currently shown in this folder.");
+      return;
+    }
+
+    const songsArr = Array.isArray(window.songs) ? window.songs : null;
+
+    let added = 0, existing = 0, failed = 0;
+
+    for(let i=0; i<targets.length; i++){
+      const s = targets[i];
+      const url = archiveBuildUrl(s);
+      if(!url){ failed++; continue; }
+
+      const meta = buildArchiveMeta(s);
+
+      // IMPORTANT: label should NOT include the title (or you'll get title duplication)
+      // Prefer prompt; fallback to filename.
+      const labelBase =
+        shortTxt(meta.prompt || s.name || "Song", 90);
+
+      const before = songsArr ? songsArr.length : 0;
+
+      try{
+        addFn(url, {
+          label: labelBase,
+          taskId: "",
+          outputIndex: 0,
+          createdAt: s.created_at || "",
+          meta,
+          serverItem: s,
+          downloadName: s.name || url
+        });
+      }catch{
+        failed++;
+        continue;
+      }
+
+      const after = songsArr ? songsArr.length : before;
+      if(after > before) added++;
+      else existing++;
+
+      // yield every so often to avoid UI freeze on huge folders
+      if((i % 50) === 49) await new Promise(r => setTimeout(r, 0));
+    }
+
+    setMusicMsg(
+      `Added ${added} song(s) to Song List.` +
+      (existing ? ` (${existing} already there.)` : "") +
+      (failed ? ` (${failed} failed.)` : "")
+    );
+  }
+
+  const addAllBtn = ensureAddAllBtn();
+  if(addAllBtn && addAllBtn.dataset.__nczBound__ !== "1"){
+    addAllBtn.dataset.__nczBound__ = "1";
+    addAllBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const oldText = addAllBtn.textContent;
+      addAllBtn.disabled = true;
+      addAllBtn.textContent = "Adding…";
+
+      try{
+        await addAllVisibleArchiveSongsToSongList();
+      }finally{
+        addAllBtn.disabled = false;
+        addAllBtn.textContent = oldText;
+      }
+    });
+  }
+
+  if (!viewMusicItem || !musicWrap || !musicList || !musicPathEl || !musicMsgEl) {
+    console.warn("[ncz-leftbar] Music UI nodes missing, aborting.");
+    return;
+  }
+
+  const musicLabel = viewMusicItem.querySelector('[data-role="musicLabel"]');
+  const musicHint  = viewMusicItem.querySelector('[data-role="musicHint"]');
+
+  // ---------- collapse toggle placement ----------
+function placeToggle(collapsed) {
+  toggleBtn.classList.remove("__ncz_lb_toggle_in_body__");
+
+  if (collapsed) {
+    toggleBtn.classList.add("__ncz_lb_toggle_in_body__");
+    toggleBtn.title = "Expand";
+
+    // ✅ put it at the very top of the inner panel, above "View Music" (archive)
+    if (viewMusicItem) body.insertBefore(toggleBtn, viewMusicItem);
+    else body.prepend(toggleBtn);
+
+  } else {
+    toggleBtn.title = "Collapse";
+    header.appendChild(toggleBtn);
+  }
+}
+
 
   function setCollapsed(collapsed) {
     side.classList.toggle("__collapsed__", !!collapsed);
@@ -2186,35 +2966,559 @@ function init(){
     try { localStorage.setItem(STORE_KEY, collapsed ? "1" : "0"); } catch {}
   }
 
-  // Restore state (default expanded unless saved)
+  // Restore collapsed state
   let collapsed = false;
   try { collapsed = localStorage.getItem(STORE_KEY) === "1"; } catch {}
   setCollapsed(collapsed);
 
-  toggleBtn.addEventListener("click", (e) => {
+  if (toggleBtn.dataset.__nczBound__ !== "1") {
+    toggleBtn.dataset.__nczBound__ = "1";
+    toggleBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      collapsed = !collapsed;
+      setCollapsed(collapsed);
+    });
+  }
+
+  // ---------- music mode (View Music / Hide Music) ----------
+  let musicMode = false;
+  let currentPath = ""; // "" = root
+
+  // ----- Archive playlist state (folder list snapshot + index) -----
+  window.__nczArchiveState = window.__nczArchiveState || { path:"", songs:[], index:-1 };
+  window.__nczArchiveRendered = window.__nczArchiveRendered || { path:"", songs:[] };
+
+  function shortTxt(s, max=220){
+    s = String(s || "").replace(/\s+/g," ").trim();
+    return s.length > max ? (s.slice(0, max-1) + "…") : s;
+  }
+
+  function archiveBuildUrl(song){
+    let raw = song?.playRef || song?.url || song?.file || song?.path || "";
+    raw = unbreakEncodedSlashes(raw);
+    if(raw && !/^https?:\/\//i.test(raw) && !raw.startsWith("/archive/api_audio/") && /\.mp3$/i.test(raw)){
+      raw = "/archive/api_audio/" + encPathKeepSlash(raw);
+    }
+    return absSongUrl(raw);
+  }
+
+  function archiveSetMetaUI(song){
+    const box = $id("resultMeta");
+    if(!box) return;
+
+    const lines = [];
+    const t = String(song?.title || song?.display || song?.name || "Song").trim();
+    lines.push(`🎵 ${t}`);
+    if(song?.author) lines.push(`Author: ${song.author}`);
+    if(song?.created_at) lines.push(`Created: ${song.created_at}`);
+
+    const meta = song?.meta;
+    if(meta && typeof meta === "object"){
+      const sig = String(meta.signature || "").trim();
+      const prompt = String(meta.prompt || meta.caption || meta.label || "").trim();
+      const lyrics = String(meta.lyrics || "").trim();
+      if(sig) lines.push(`Signature: ${sig}`);
+      if(prompt) lines.push(`Prompt: ${shortTxt(prompt, 220)}`);
+      if(lyrics) lines.push(`Lyrics: ${shortTxt(lyrics, 220)}`);
+    }
+
+    box.textContent = lines.join("\n");
+  }
+
+  function playArchiveAt(i, autoplay=true){
+    const st = window.__nczArchiveState;
+    const list = Array.isArray(st?.songs) ? st.songs : [];
+    const song = list[i];
+    if(!song) return false;
+
+    st.index = i;
+    window.__nczLastPlaylist = "archive";
+
+    const url = archiveBuildUrl(song);
+
+    const player = $id("player");
+    if(!player) return false;
+    player.src = url;
+
+    const dl = $id("downloadLink");
+    if(dl){
+      dl.href = url;
+      const name = String(song.name || "").split("/").pop() || "";
+      if(name) dl.download = name;
+    }
+
+    archiveSetMetaUI(song);
+
+    const title = String(song.display || song.name || "Song").trim();
+    document.title = title ? `${title} — MEQUAVIS ACE-Step AI Music Generator` : "MEQUAVIS ACE-Step AI Music Generator";
+
+    if(autoplay) Promise.resolve(player.play()).catch(()=>{});
+    return true;
+  }
+
+  // exposed: used by global router
+  window.__nczArchiveStep = (delta, opts={}) => {
+    const st = window.__nczArchiveState;
+    const list = Array.isArray(st?.songs) ? st.songs : [];
+    if(!list.length) return false;
+
+    let i = (typeof st.index === "number") ? st.index : -1;
+    if(i < 0) i = 0;
+
+    const next = i + delta;
+    if(next < 0 || next >= list.length) return false;
+
+    return playArchiveAt(next, opts.autoplay !== false);
+  };
+
+
+  function setMusicMsg(s){
+    musicMsgEl.textContent = String(s || "");
+  }
+
+  function setMusicButtonText(on){
+    const labelText = on ? "Hide Music" : "View Music";
+    const hintText  = on ? "Close browser" : "Browse archive";
+    if (musicLabel) musicLabel.textContent = labelText;
+    if (musicHint)  musicHint.textContent  = hintText;
+    viewMusicItem.title = labelText;
+  }
+
+async function browse(path){
+  // keep '/' as '/', only encode segments
+  const q = path ? ("?path=" + encPathKeepSlash(path)) : "";
+  return await apiFetch("/archive/browse" + q, { method:"GET" });
+}
+
+
+    // --------- helpers for archive parsing ----------
+  function isMp3Name(n){ return /\.mp3$/i.test(String(n||"")); }
+  function isJsonName(n){ return /\.json$/i.test(String(n||"")); }
+
+  function baseNoExt(n){
+    n = String(n||"").split("/").filter(Boolean).pop() || "";
+    return n.replace(/\.(mp3|json)$/i, "");
+  }
+
+  function pickTitleAuthorFromAnyMeta(metaObj){
+    // metaObj may be:
+    // - {metas:{title,author,caption,...}, created_at,...}
+    // - {title,author,...}
+    // - null
+    const m = (metaObj && typeof metaObj === "object") ? metaObj : {};
+    const metas = (m.metas && typeof m.metas === "object") ? m.metas : m;
+
+    const title  = String(metas.title || metas.song_title || m.title || m.song_title || "").trim();
+    const author = String(metas.author || metas.artist || m.author || m.artist || "").trim();
+
+    let display = "";
+    if(title && author) display = `${title} — ${author}`;
+    else if(title) display = title;
+    else if(author) display = author;
+
+    // metaForPopup: prefer metas dict if present
+    const metaForPopup =
+      (m.metas && typeof m.metas === "object") ? m.metas :
+      (metas && typeof metas === "object") ? metas :
+      null;
+
+    // created_at string passthrough (server may already format)
+    const created_at = m.created_at || m.created || "";
+
+    return { title, author, display, metaForPopup, created_at };
+  }
+
+  function mkEntry(x, cwd){
+    // returns {kind:'dir'|'mp3'|'json'|'other', name, path, file, url, meta, created_at}
+    if (typeof x === "string") {
+      const name = x.split("/").filter(Boolean).pop() || x;
+      const path = joinPath(cwd, x);
+      const kind = isMp3Name(name) ? "mp3" : (isJsonName(name) ? "json" : "other");
+      return { kind, name, path, file: x, url: "", meta: null, created_at: "" };
+    }
+
+    const obj = (x && typeof x === "object") ? x : {};
+    const rawName = String(obj.name ?? obj.filename ?? obj.file ?? obj.path ?? "").split("/").filter(Boolean).pop() || "";
+    const rawPath = String(obj.path ?? "").replace(/^\/+|\/+$/g, "");
+    const name = rawName || (rawPath ? rawPath.split("/").pop() : "");
+
+    const t = String(obj.type ?? obj.kind ?? "").toLowerCase();
+    const isDir =
+      t === "dir" || t === "folder" || t === "directory" ||
+      (!!obj.is_dir) || (!!obj.isDir);
+
+    const kind = isDir ? "dir" : (isMp3Name(name) ? "mp3" : (isJsonName(name) ? "json" : "other"));
+
+    const path = rawPath || joinPath(cwd, name);
+    const file = obj.file || obj.filename || obj.url || obj.href || "";
+    const url  = obj.url || "";
+
+    const meta = obj.meta || obj.metas || obj.metadata || null;
+    const created_at = obj.created_at || obj.created || "";
+
+    return { kind, name, path, file, url, meta, created_at };
+  }
+
+  // --------- REPLACE normalizeBrowseResponse WITH THIS ----------
+  function normalizeBrowseResponse(data){
+    const obj = (data && typeof data === "object") ? data : {};
+    const p = String(obj.path ?? obj.cwd ?? obj.current_path ?? currentPath ?? "")
+      .replace(/^\/+|\/+$/g,"");
+
+    // folders can come from obj.folders AND/OR items
+    const foldersFromObj =
+      safeArr(obj.folders).map(x => {
+        if (typeof x === "string") return ({ name: x, path: joinPath(p, x) });
+        const nm = String(x?.name ?? x?.folder ?? x?.path ?? "").split("/").filter(Boolean).pop() || "";
+        const fp = String(x?.path ?? x?.full_path ?? joinPath(p, nm)).replace(/^\/+|\/+$/g,"");
+        return nm ? ({ name: nm, path: fp }) : null;
+      }).filter(Boolean);
+
+    const itemsRaw = safeArr(obj.items ?? obj.files ?? obj.songs ?? []);
+    const entries = itemsRaw.map(x => mkEntry(x, p)).filter(Boolean);
+
+    // dirs from items too
+    const foldersFromItems = entries
+      .filter(e => e.kind === "dir")
+      .map(e => ({ name: e.name, path: e.path }))
+      .filter(f => f.name && f.path != null);
+
+    // index json meta by base
+    const jsonByBase = {};
+    entries.filter(e => e.kind === "json").forEach(e => {
+      const b = baseNoExt(e.name);
+      if(!b) return;
+      // keep first; or prefer one with meta if present
+      if(!jsonByBase[b] || (!jsonByBase[b].meta && e.meta)) jsonByBase[b] = e;
+    });
+
+    // mp3 list (ONLY mp3)
+    const mp3s = entries.filter(e => e.kind === "mp3");
+
+    const songs = mp3s.map(e => {
+      const b = baseNoExt(e.name);
+      const j = jsonByBase[b] || null;
+
+      // meta can be on mp3 entry OR json entry OR fetched later
+      const metaCandidate = e.meta || (j ? j.meta : null);
+
+      const picked = pickTitleAuthorFromAnyMeta(metaCandidate);
+
+      // display name: prefer real title; fallback to filename
+      const displayName = picked.display || e.name;
+
+      // choose file/url for playback: prefer url -> file -> path
+      const playRef = e.url || e.file || e.path;
+
+      return {
+        base: b,
+        name: e.name,              // filename
+        display: displayName,      // human readable
+        path: e.path,
+        url: e.url || "",
+        file: e.file || "",
+        playRef,                   // what we’ll absSongUrl() and play
+        meta: picked.metaForPopup, // metas dict preferred
+        title: picked.title || "",
+        author: picked.author || "",
+        created_at: picked.created_at || e.created_at || "",
+        // if we have a json file path/url, keep it for hydration
+        _jsonRef: j ? (j.url || j.file || j.path) : ""
+      };
+    });
+
+    // de-dupe folders (obj + items)
+    const folderMap = new Map();
+    [...foldersFromObj, ...foldersFromItems].forEach(f => {
+      const key = f.path || f.name;
+      if(!key) return;
+      if(!folderMap.has(key)) folderMap.set(key, f);
+    });
+
+    // sort: folders alpha, songs alpha by display (or keep server order if you want)
+    const folders = Array.from(folderMap.values())
+      .sort((a,b) => String(a.name).localeCompare(String(b.name)));
+
+    songs.sort((a,b) => String(a.display).localeCompare(String(b.display)));
+
+    return { path: p, folders, songs };
+  }
+
+
+  // --------- OPTIONAL: hydrate titles from json files if meta wasn’t included ----------
+  async function hydrateSongTitlesFromJson(songs){
+    // only if we have json ref + missing title
+    const targets = (songs || []).filter(s => s && s._jsonRef && !(s.title || s.author) && !s.meta);
+    if(!targets.length) return;
+
+    for (const s of targets) {
+      const row = musicList?.querySelector?.(`.__ncz_music_item__[data-kind="song"][data-base="${CSS.escape(s.base)}"]`);
+      if(!row) continue;
+
+      try{
+        const jsonUrl = absSongUrl(s._jsonRef);
+        const r = await fetch(jsonUrl);
+        if(!r.ok) continue;
+
+        const metaObj = await r.json();
+        const picked = pickTitleAuthorFromAnyMeta(metaObj);
+
+        // update row fields + cached meta
+        if(picked.display){
+          const nameEl = row.querySelector(".__name__");
+          if(nameEl) nameEl.textContent = picked.display;
+          row.dataset.title  = picked.title || "";
+          row.dataset.author = picked.author || "";
+        }
+
+        const metaForPopup = picked.metaForPopup || null;
+        if(metaForPopup){
+          row.__meta = metaForPopup;
+        }
+
+        if(picked.created_at){
+          row.__created_at = picked.created_at;
+        }
+      }catch{
+        // ignore hydration failures
+      }
+    }
+  }
+
+  // --------- REPLACE renderBrowse WITH THIS (folders recursion stays correct, songs are mp3-only) ----------
+  function renderBrowse({path, folders, songs}){
+    currentPath = String(path || "").replace(/^\/+|\/+$/g,"");
+    window.__nczArchiveRendered = { path: currentPath, songs: (songs || []) };
+
+    musicPathEl.textContent = "archive: /" + (currentPath ? currentPath : "");
+    musicList.innerHTML = "";
+    setMusicMsg("");
+
+    // Up nav (if not root)
+    if (currentPath) {
+      const up = document.createElement("div");
+      up.className = "__ncz_music_item__";
+      up.dataset.kind = "up";
+      up.innerHTML = `
+        <div class="__ico__">↩</div>
+        <div class="__txt__">
+          <div class="__name__">..</div>
+          <div class="__sub__">up one level</div>
+        </div>
+      `;
+      up.addEventListener("click", async (e) => {
+        e.preventDefault();
+        await loadPath(parentPath(currentPath));
+      });
+      musicList.appendChild(up);
+    }
+
+    // folders first (✅ recursion: ALWAYS uses loadPath with folder path)
+    folders.forEach(f => {
+      const row = document.createElement("div");
+      row.className = "__ncz_music_item__";
+      row.dataset.kind = "folder";
+      row.dataset.path = f.path;
+      row.innerHTML = `
+        <div class="__ico__">📁</div>
+        <div class="__txt__">
+          <div class="__name__">${f.name}</div>
+          <div class="__sub__">${f.path}</div>
+        </div>
+      `;
+      row.addEventListener("click", async (e) => {
+        e.preventDefault();
+        await loadPath(f.path);
+      });
+      musicList.appendChild(row);
+    });
+// tiny escape so titles can't break your list markup
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[m]));
+
+(songs || []).forEach(s => {
+  const row = document.createElement("div");
+  row.className = "__ncz_music_item__";
+  row.dataset.kind = "song";
+  row.dataset.base = s.base || "";
+  row.dataset.path = s.path || "";
+  row.dataset.url  = s.url || "";
+  row.dataset.file = s.file || "";
+  row.dataset.play = s.playRef || "";
+  row.dataset.title  = s.title || "";
+  row.dataset.author = s.author || "";
+
+  row.__meta = s.meta || null;
+  row.__created_at = s.created_at || "";
+
+  // ✅ This is the title you WANT displayed (title/author/etc)
+  const displayTitle =
+    (typeof window.pickSongDisplayTitle === "function" ? window.pickSongDisplayTitle(s) : "") ||
+    s.display || s.name || s.path || "Untitled";
+
+  // ✅ Subline should stay “data-ish”: created_at + whatever filename/path/caption you had
+  const subLine =
+    (s.created_at ? `${s.created_at}  •  ` : "") + (s.name || s.path || "");
+
+  row.innerHTML = `
+    <div class="__ico__">🎵</div>
+    <div class="__txt__">
+      <div class="__name__">${esc(displayTitle)}</div>
+      <div class="__sub__">${esc(subLine)}</div>
+    </div>
+  `;
+
+  row.addEventListener("click", (e) => {
     e.preventDefault();
-    collapsed = !collapsed;
-    setCollapsed(collapsed);
+
+    // ✅ play only mp3
+    let raw = row.dataset.play || row.dataset.url || row.dataset.file || row.dataset.path || "";
+
+    // remove any %2F that snuck in
+    raw = unbreakEncodedSlashes(raw);
+
+    // if we only have a rel archive path like "batch_1/My Song.mp3", build a safe archive URL
+    if (raw && !/^https?:\/\//i.test(raw) && !raw.startsWith("/archive/api_audio/") && /\.mp3$/i.test(raw)) {
+      raw = "/archive/api_audio/" + encPathKeepSlash(raw);
+    }
+
+    const url = absSongUrl(raw);
+
+    const player = $id("player");
+    const dl = $id("downloadLink");
+
+    // ✅ keep meta (caption/title/author/etc) but DO NOT shove label into caption
+    const createdAt = row.__created_at || "";
+
+    // ✅ IMPORTANT: ensure title/author exist inside meta too (without overwriting existing keys)
+    const t = row.dataset.title || "";
+    const a = row.dataset.author || "";
+    const meta = Object.assign(
+      {},
+      (row.__meta && typeof row.__meta === "object") ? row.__meta : {},
+      (t && !((row.__meta || {}).title)  ? { title: t }  : null),
+      (a && !((row.__meta || {}).author) ? { author: a } : null),
+    );
+
+    if (typeof window.addSongToList === "function" && typeof window.loadIntoMainPlayer === "function") {
+      const idx = window.addSongToList(url, {
+        label: "",                 // ✅ don't overwrite caption text
+        createdAt,
+        meta,
+        serverItem: { file: raw, url, meta, created_at: createdAt, title: t, author: a }
+      });
+      window.loadIntoMainPlayer(idx, true);
+      return;
+    }
+
+    // fallback: direct play
+    if (player) {
+      player.src = url;
+      Promise.resolve(player.play()).catch(()=>{});
+    }
+    if (dl) dl.href = url;
+
+    document.title = `${t || displayTitle}${a ? " — " + a : ""} — MEQUAVIS ACE-Step AI Music Generator`;
   });
 
-  // Optional wiring to your existing buttons (safe if they exist)
+  musicList.appendChild(row);
+});
+
+if (!folders.length && !(songs || []).length) {
+  setMusicMsg("No folders or songs found here.");
+}
+
+// ✅ optional: if browse endpoint doesn’t include meta, auto-fetch uuid.json to rename rows
+hydrateSongTitlesFromJson(songs).catch(()=>{});
+
+  }
+
+  let browseInFlight = false;
+  async function loadPath(path){
+    if (browseInFlight) return;
+    browseInFlight = true;
+    try{
+      setMusicMsg("Loading…");
+      const data = await browse(path);
+      const out = normalizeBrowseResponse(data);
+      renderBrowse(out);
+    }catch(err){
+      setMusicMsg("Browse failed:\n" + (err?.message || String(err)));
+    }finally{
+      browseInFlight = false;
+    }
+  }
+
+  function setMusicMode(on){
+    musicMode = !!on;
+    side.classList.toggle("__musicmode__", musicMode);
+    setMusicButtonText(musicMode);
+
+    try { localStorage.setItem(STORE_MUSIC_KEY, musicMode ? "1" : "0"); } catch {}
+
+    // show/hide wrap is driven by CSS via __musicmode__
+    if (musicMode) {
+      loadPath(currentPath);
+    } else {
+      setMusicMsg("");
+      // keep list, but it’s hidden; no need to clear unless you want:
+      // musicList.innerHTML = "";
+    }
+  }
+
+  // Restore music mode state (default OFF)
+  try { musicMode = localStorage.getItem(STORE_MUSIC_KEY) === "1"; } catch { musicMode = false; }
+  setMusicMode(musicMode);
+
+  // Bind View Music click once
+  if (viewMusicItem.dataset.__nczBound__ !== "1") {
+    viewMusicItem.dataset.__nczBound__ = "1";
+    viewMusicItem.addEventListener("click", (e) => {
+      e.preventDefault();
+      setMusicMode(!musicMode);
+    });
+  }
+
+  if (refreshBtn && refreshBtn.dataset.__nczBound__ !== "1") {
+    refreshBtn.dataset.__nczBound__ = "1";
+    refreshBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (musicMode) loadPath(currentPath);
+    });
+  }
+
+  // ---------- action wiring (Generate/Songs/Health/Top) ----------
   function clickIfExists(id){
     const el = document.getElementById(id);
     if (el) el.click();
   }
 
-  side.addEventListener("click", (e) => {
-    const item = e.target.closest?.("[data-action]");
-    if (!item) return;
-    const act = item.getAttribute("data-action");
-    if (act === "generate") clickIfExists("btnGenerate");
-    if (act === "songs") clickIfExists("btnShowAllSongs");
-    if (act === "health") clickIfExists("btnHealth");
-    if (act === "top") window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+  if (side.dataset.__nczActionBound__ !== "1") {
+    side.dataset.__nczActionBound__ = "1";
+    side.addEventListener("click", (e) => {
+      const item = e.target.closest?.("[data-action]");
+      if (!item) return;
 
-  console.log("[ncz-leftbar] Sidebar added/updated (toggle moves under Top when collapsed).");
+      const act = item.getAttribute("data-action");
+      if (act === MUSIC_BTN_ACTION) return; // handled by its own listener
+
+      if (act === "generate") clickIfExists("btnGenerate");
+      if (act === "songs") clickIfExists("btnShowAllSongs");
+      if (act === "health") clickIfExists("btnHealth");
+      if (act === "top") window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  console.log("[ncz-leftbar] View Music + archive browser enabled.");
 })();
+
+
+
+
+
+
+
 
 
 //fix panel
@@ -2314,8 +3618,6 @@ function init(){
 
   console.log("[ncz-reflow] enabled (collapse reclaims space)");
 })();
-
-
 
 
 
@@ -2502,9 +3804,10 @@ function init(){
       <div class="__hd__">
         <div class="__brand__">
           <div class="__brandcol__">
-            <div class="__logo__">i</div>
+            
             <!-- toggle can be moved here when collapsed -->
           </div>
+<div class="__logo__">i</div>
           <div class="__titlewrap__">
             <div class="__title__">NanoCheeZe MEQUAVIS</div>
             <div class="__sub__">Page/Song Info</div>
@@ -5553,6 +6856,139 @@ Also, You can use my old MEQUAVIS app and the NanoCheeZe coin running locally to
 
   console.log("[songlist-rev] Ready. Reverse toggle added next to 'Song List'.");
 })();
+
+
+
+// ✅ $ helper (NOT jQuery). Lets your existing code work.
+if (typeof window.$ !== "function") {
+  window.$ = function (idOrSelector) {
+    if (!idOrSelector) return null;
+
+    // If it looks like a selector, use querySelector
+    const s = String(idOrSelector);
+    const looksLikeSelector =
+      s[0] === "#" || s[0] === "." || s.includes(" ") || s.includes("[") || s.includes(">") || s.includes(":");
+
+    return looksLikeSelector ? document.querySelector(s) : document.getElementById(s);
+  };
+}
+
+// ---------- Clear Song List button (NEW SONG LIST) ----------
+// Helper: clear Map / Set / Object safely
+function __nczClearAny(x) {
+  if (!x) return;
+  // Map/Set (or anything with .clear)
+  if (typeof x.clear === "function") { try { x.clear(); } catch {} return; }
+  // Plain object
+  if (typeof x === "object") {
+    try { Object.keys(x).forEach(k => { try { delete x[k]; } catch {} }); } catch {}
+  }
+}
+
+// ---------- Clear Song List button (NEW SONG LIST) ----------
+// ---------- Clear Song List button (NEW SONG LIST) ----------
+// Clears by removing each item using *your* existing removeSongFromNewList()
+// so indexes + maps stay correct (same path as the red ✖ buttons).
+function clearSongListAll({ confirmFirst = true } = {}) {
+  if (confirmFirst && !window.confirm("Clear ALL items from Song List?")) return false;
+
+  // prevent double-click / re-entrancy
+  if (window.__nczClearingSongList) return false;
+  window.__nczClearingSongList = true;
+
+  try {
+    // ✅ Use the SAME removal path as the ✖ button
+    if (typeof window.removeSongFromNewList === "function" &&
+        typeof window.songs !== "undefined" &&
+        Array.isArray(window.songs)) {
+
+      // Remove from END → START so indexes don’t shift under us
+      for (let i = window.songs.length - 1; i >= 0; i--) {
+        try {
+          // ✖ uses: removeSongFromNewList(idx, { autoplayNext: true });
+          // For bulk clear, autoplaying every step is chaos, so we disable autoplay.
+          // If you truly want EXACT behavior, change autoplayNext:false → true.
+          window.removeSongFromNewList(i, { autoplayNext: false });
+        } catch (e) {
+          console.error("removeSongFromNewList failed at index", i, e);
+        }
+      }
+    }
+
+    // ✅ FINAL SANITY RESET (in case anything was left behind by earlier bad clears)
+    // This does NOT break anything because by this point items are already removed the “right way”.
+    if (typeof window.songUrlToIndex !== "undefined" && window.songUrlToIndex?.clear) window.songUrlToIndex.clear();
+    if (typeof window.songUrlToMeta  !== "undefined" && window.songUrlToMeta?.clear)  window.songUrlToMeta.clear();
+    if (typeof window.songs !== "undefined" && Array.isArray(window.songs)) window.songs.length = 0;
+
+    // Clear DOM (should already be empty, but guarantees clean UI)
+    const listEl = document.getElementById("songList");
+    if (listEl) listEl.innerHTML = "";
+
+    // Reset indexes + UI
+    if (typeof window.currentSongIndex !== "undefined") window.currentSongIndex = -1;
+    try { window.__nczLastPlaylist = "new"; } catch {}
+
+    const player = document.getElementById("player");
+    if (player) {
+      try { player.pause(); } catch {}
+      player.removeAttribute("src");
+      try { player.load(); } catch {}
+    }
+
+    const dl = document.getElementById("downloadLink");
+    if (dl) {
+      dl.href = "#";
+      dl.removeAttribute("download");
+    }
+
+    const rm = document.getElementById("resultMeta");
+    if (rm) rm.textContent = "No songs yet.";
+
+    document.title = "MEQUAVIS ACE-Step AI Music Generator";
+    return true;
+
+  } finally {
+    window.__nczClearingSongList = false;
+  }
+}
+
+
+
+function ensureClearSongListButton() {
+  const BTN_ID = "__ncz_clear_song_list__";
+  if (document.getElementById(BTN_ID)) return true;
+
+  // Insert right below the scrollable list wrap
+  const wrap =
+    document.querySelector(".songListWrap") ||
+    $("songList")?.closest(".songListWrap");
+
+  if (!wrap) return false;
+
+  const btn = document.createElement("button");
+  btn.id = BTN_ID;
+  btn.type = "button";
+  btn.className = "danger";
+  btn.textContent = "Clear Song List";
+  btn.style.marginTop = "10px";
+  btn.style.width = "100%";
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    clearSongListAll({ confirmFirst: true });
+  });
+
+  wrap.insertAdjacentElement("afterend", btn);
+  return true;
+}
+
+// ✅ Mount when the UI exists (no jQuery, no guessing timing)
+(function mountWhenReady() {
+  if (ensureClearSongListButton()) return;
+  setTimeout(mountWhenReady, 100);
+})();
+
 
 
 
