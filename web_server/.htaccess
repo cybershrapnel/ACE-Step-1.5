@@ -1,6 +1,13 @@
 RewriteEngine On
 RewriteBase /ace/
 
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Max-Age "86400"
+</IfModule>
+
 # If it's a real file/dir, serve it directly (optional but nice)
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
@@ -10,4 +17,4 @@ RewriteRule ^ - [L]
 RewriteRule ^$ index.php?u=/ [QSA,L]
 
 # /ace/anything -> index.php?u=/anything
-RewriteRule ^(.+)$ index.php?u=/$1 [QSA,L]
+RewriteRule ^(.+)$ index.php?u=/$1 [B,QSA,L]
