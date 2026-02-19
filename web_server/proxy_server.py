@@ -11,6 +11,10 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+
+
+
+
 UPSTREAM = os.getenv("ACESTEP_UPSTREAM", "http://127.0.0.1:8001").rstrip("/")
 WEB_DIR = os.getenv("WEB_DIR", ".")
 INDEX_PATH = os.path.join(WEB_DIR, "index.html")
@@ -646,6 +650,138 @@ async def archive_meta(rel_path: str):
     return JSONResponse(meta)
 
 
+import os
+import json
+import time
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+# Optional file lock (Linux): prevents race conditions on concurrent requests
+try:
+    import fcntl  # type: ignore
+except Exception:
+    fcntl = None
+
+# ---- config ----
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_ONLINE_LOG = os.getenv(
+    "USERS_ONLINE_LOG",
+    os.path.join(SCRIPT_DIR, "users_online_ips.json")
+)
+USERS_ONLINE_LOCK = USERS_ONLINE_LOG + ".lock"
+
+WINDOW_MINUTES = 90
+WINDOW_SECONDS = WINDOW_MINUTES * 60
+
+
+def _get_client_ip(request: Request) -> str:
+    """
+    Best-effort real IP:
+    - X-Forwarded-For (first IP)
+    - X-Real-IP
+    - CF-Connecting-IP
+    - request.client.host
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        parts = [p.strip() for p in xff.split(",") if p.strip()]
+        if parts:
+            return parts[0]
+
+    xrip = request.headers.get("x-real-ip")
+    if xrip:
+        return xrip.strip()
+
+    cfip = request.headers.get("cf-connecting-ip")
+    if cfip:
+        return cfip.strip()
+
+    if request.client and request.client.host:
+        return str(request.client.host)
+
+    return "unknown"
+
+
+def _read_state(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            out = {}
+            for k, v in data.items():
+                try:
+                    out[str(k)] = float(v)
+                except Exception:
+                    pass
+            return out
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+    return {}
+
+
+def _write_state_atomic(path: str, state: dict) -> None:
+    # Atomic-ish write: write to temp then replace
+    d = os.path.dirname(path) or "."
+    if not os.path.isdir(d):
+        os.makedirs(d)
+
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, separators=(",", ":"))
+    try:
+        os.replace(tmp, path)
+    except Exception:
+        # last resort
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f, separators=(",", ":"))
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
+def _with_lock(lock_path: str):
+    """
+    Cross-request lock using a lockfile.
+    Works best on Linux with fcntl.
+    """
+    lf = open(lock_path, "a+", encoding="utf-8")
+    if fcntl:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+    return lf
+
+
+# ---- add this route to your FastAPI app ----
+@app.get("/users_online")
+async def users_online(request: Request):
+    now = time.time()
+    ip = _get_client_ip(request)
+    cutoff = now - WINDOW_SECONDS
+
+    # lock during read-modify-write so concurrent hits don't clobber each other
+    lockf = _with_lock(USERS_ONLINE_LOCK)
+    try:
+        state = _read_state(USERS_ONLINE_LOG)
+
+        # update existing or add new
+        state[ip] = now
+
+        # keep only "recent" users
+        state = {k: v for (k, v) in state.items() if v >= cutoff}
+
+        _write_state_atomic(USERS_ONLINE_LOG, state)
+
+        count = len(state)
+    finally:
+        try:
+            lockf.close()
+        except Exception:
+            pass
+
+    # Return JSON; JS below accepts either {"online":N} or just N
+    return JSONResponse({"online": count, "window_minutes": WINDOW_MINUTES})
 
 
 
@@ -701,3 +837,6 @@ async def proxy(full_path: str, request: Request):
 
     except httpx.RequestError as e:
         return Response(content=f"Upstream request error: {e}", status_code=502)
+
+
+
