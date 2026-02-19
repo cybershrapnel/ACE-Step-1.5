@@ -6992,6 +6992,190 @@ function ensureClearSongListButton() {
 
 
 
+
+
+
+
+
+
+
+
+
 </script>
+
+<script>
+(() => {
+  "use strict";
+
+  const STYLE_ID = "__ncz_users_online_style__";
+  const PILL_ID  = "__ncz_users_online_pill__";
+  const DOT_ID   = "__ncz_users_online_dot__";
+  const TEXT_ID  = "__ncz_users_online_text__";
+
+  const REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+  const ENDPOINT_PATH = "/users_online";
+
+  function normBaseUrl(u){
+    u = (u || "").trim();
+    if(!u) return window.location.origin;
+    return u.replace(/\/+$/, "");
+  }
+
+  function setPillState(dot, textEl, state, text){
+    dot.classList.remove("good","bad","warn");
+    if(state === "good") dot.classList.add("good");
+    else if(state === "bad") dot.classList.add("bad");
+    else dot.classList.add("warn");
+    textEl.textContent = text;
+  }
+
+  function ensureStyles(){
+    if(document.getElementById(STYLE_ID)) return;
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+      #${PILL_ID}{
+        cursor: pointer;
+        user-select: none;
+      }
+      #${PILL_ID}:hover{
+        background: rgba(255,255,255,.10);
+      }
+      #${PILL_ID}:active{
+        transform: translateY(1px);
+      }
+      #${PILL_ID} .__ncz_user_ico__{
+        font-size: 13px;
+        line-height: 1;
+        margin-left: 2px;
+        opacity: .95;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function ensurePill(){
+    const health = document.getElementById("healthPill");
+    if(!health) return null;
+
+    let pill = document.getElementById(PILL_ID);
+    if(pill) return pill;
+
+    ensureStyles();
+
+    pill = document.createElement("div");
+    pill.id = PILL_ID;
+    pill.className = "pill";
+    pill.setAttribute("role", "button");
+    pill.setAttribute("tabindex", "0");
+    pill.title = "Users online (last 90 minutes). Click to refresh now.";
+
+    pill.innerHTML = `
+      <span class="dot warn" id="${DOT_ID}"></span>
+      <span class="__ncz_user_ico__" aria-hidden="true">👤</span>
+      <span id="${TEXT_ID}">— online</span>
+    `;
+
+    // Insert to the LEFT of the Ace health pill
+    health.parentElement.insertBefore(pill, health);
+
+    return pill;
+  }
+
+  async function fetchUsersOnline(){
+    const pill = ensurePill();
+    if(!pill) return;
+
+    const dot = document.getElementById(DOT_ID);
+    const txt = document.getElementById(TEXT_ID);
+    if(!dot || !txt) return;
+
+    setPillState(dot, txt, "warn", "Checking…");
+
+    // Use the same baseUrl input your app uses
+    const baseEl = document.getElementById("baseUrl");
+    const base = normBaseUrl(baseEl ? baseEl.value : "");
+    const url = base + ENDPOINT_PATH;
+
+    try{
+      const resp = await fetch(url, { method: "GET", cache: "no-store" });
+
+      let data = null;
+      try { data = await resp.json(); } catch { data = null; }
+
+      if(!resp.ok){
+        setPillState(dot, txt, "bad", "Error");
+        return;
+      }
+
+      // Accept either {"online": N} or plain number N
+      let n = null;
+      if(typeof data === "number") n = data;
+      else if(data && typeof data === "object" && typeof data.online === "number") n = data.online;
+
+      if(n == null || !Number.isFinite(n)){
+        setPillState(dot, txt, "bad", "Bad data");
+        return;
+      }
+
+      setPillState(dot, txt, "good", `${n} online`);
+    }catch(e){
+      setPillState(dot, txt, "bad", "Offline");
+    }
+  }
+
+  let timer = null;
+  function schedule(){
+    if(timer) clearInterval(timer);
+    timer = setInterval(fetchUsersOnline, REFRESH_MS);
+  }
+
+  function bindClick(pill){
+    if(!pill || pill.dataset.__bound__ === "1") return;
+    pill.dataset.__bound__ = "1";
+
+    pill.addEventListener("click", (e) => {
+      e.preventDefault();
+      fetchUsersOnline();
+      schedule(); // reset the 5-min cycle from now
+    });
+
+    pill.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" || e.key === " "){
+        e.preventDefault();
+        fetchUsersOnline();
+        schedule();
+      }
+    });
+  }
+
+  function init(){
+    const pill = ensurePill();
+    if(!pill) return false;
+    bindClick(pill);
+
+    // initial fetch
+    setTimeout(() => {
+      fetchUsersOnline();
+      schedule();
+    }, 800);
+
+    return true;
+  }
+
+  if(init()) return;
+
+  // If header isn't ready yet, watch DOM briefly
+  const obs = new MutationObserver(() => {
+    if(init()) obs.disconnect();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  setTimeout(() => obs.disconnect(), 15000);
+})();
+</script>
+
+
+
 </body>
 </html>
