@@ -1082,3 +1082,336 @@ If video activation depends on UI handlers, prefer Pattern A.
 * **Producer overlay**: `/playlist` (wait) + `/producer/all` (master)
 * **Chat panel**: `/chat/messages` + `/chat/send` + `/queryUsers` + `/deleteUser`
 * **AI Radio mode**: `/aiRadio`
+
+
+
+-----------------
+
+
+````md
+## Public Reverse Proxy Layer (GoDaddy shared hosting → PHP 5.2 → your FastAPI server)
+
+You serve the whole MEQUAVIS / NCZ web app through **two proxy layers**:
+
+1) **Public-facing proxy (PHP 5.2 on GoDaddy shared hosting)**  
+   - Public URL: `https://xtdevelopment.net/ace/...`
+   - Runs `index.php` + `.htaccess` rewrite rules
+   - Forwards every request to your real server (the FastAPI `server.py`)
+
+2) **Your real server (FastAPI `server.py`)**  
+   - Runs on your machine / VPS / home network (whatever the `UPSTREAM` points to)
+   - Serves `index.html`, `/songs`, `/archive/*`, `/aiRadio`, chat, playlist endpoints, etc.
+   - Proxies any unknown routes to ACE-Step upstream (`ACESTEP_UPSTREAM`)
+
+This setup lets you:
+- **Hide** your real server behind `xtdevelopment.net/ace/`
+- Still allow direct access when appropriate:
+  - `http://<your_public_ip>/...` (if someone knows it and firewall allows)
+  - `http://127.0.0.1/...` on your LAN/intranet
+  - Local intranet hostname if you use one
+
+### The 3 ways your app can be reached
+- **Public (hidden origin):** `https://xtdevelopment.net/ace/` → PHP proxy → FastAPI `server.py`
+- **Direct public IP:** `http://<ip>/` → FastAPI `server.py` (only if you expose it)
+- **Local network:** `http://127.0.0.1/` or `http://LAN-IP/` → FastAPI `server.py`
+
+All three “work” as long as routing/firewall/network policies allow them.
+
+---
+
+# PHP 5.2 reverse proxy (`index.php`)
+
+This file is a **streaming reverse proxy** using cURL that forwards:
+
+- Method (GET/POST/PUT/etc.)
+- Query params (except the internal routing param `u`)
+- Body (for POST/PUT/PATCH)
+- Most headers (with hop-by-hop headers stripped)
+
+### Why you need it (and why PHP 5.2)
+GoDaddy shared hosting is limited: you can’t run FastAPI directly there.  
+But you *can* run PHP, and PHP can forward requests to your actual server.
+
+So `xtdevelopment.net/ace/...` becomes a clean public front door.
+
+---
+
+## How routing works
+
+### 1) `.htaccess` rewrites everything to `index.php?u=...`
+
+When a browser requests:
+- `https://xtdevelopment.net/ace/songs`
+
+Apache rewrites it to:
+- `/ace/index.php?u=/songs`
+
+### 2) `index.php` rebuilds the upstream target URL
+
+It starts with:
+```php
+$UPSTREAM = 'http://*.*.*.*'; // your real server
+$u = $_GET['u'];             // the rewritten path
+````
+
+Then it builds:
+
+```php
+$target = rtrim($UPSTREAM, '/') . $u . '?' . remaining_query_params
+```
+
+So the example becomes:
+
+* `http://*.*.*.*/songs`
+
+And it streams the upstream response back to the client.
+
+---
+
+## Path safety + encoding detail
+
+This line is important:
+
+```php
+$u = preg_replace_callback('~[^/]+~', function($m){
+    return rawurlencode(rawurldecode($m[0]));
+}, $u);
+```
+
+It:
+
+* decodes each segment
+* re-encodes it safely
+
+That prevents path segments from being double-encoded or broken by weird characters (spaces, `%`, unicode, etc.). It keeps your proxy path behavior stable for things like:
+
+* `/archive/api_audio/...`
+* filenames with spaces
+* nested folder paths
+
+---
+
+## Header handling (why it strips certain headers)
+
+### Incoming headers → outgoing cURL headers
+
+It strips:
+
+* hop-by-hop headers (`Connection`, `Transfer-Encoding`, `Host`, `Content-Length`, etc.)
+* `Accept-Encoding`
+
+Dropping `Accept-Encoding` is a common trick: it avoids gzip/chunked edge cases on shared hosting where Apache/PHP buffering can corrupt streaming responses.
+
+### Response headers → browser
+
+Your callback `proxyHeaderCb()`:
+
+* forwards the upstream HTTP status code
+* forwards most headers
+* strips `Transfer-Encoding`, `Content-Length`, etc.
+* de-dupes headers (but still allows multiple `Set-Cookie`)
+
+This keeps streaming sane and prevents “double-chunking” problems.
+
+---
+
+## Streaming response body
+
+`proxyWriteCb()` echoes raw bytes as they arrive, and calls `flush()` when available.
+
+That means:
+
+* mp3 bytes can stream
+* large responses don’t need to buffer entirely in PHP memory
+
+---
+
+# `.htaccess` (Apache rewrite + CORS)
+
+This is what makes `/ace/...` behave like a clean site root.
+
+## Rewrite rules
+
+```apache
+RewriteEngine On
+RewriteBase /ace/
+```
+
+### 1) Serve real files directly (optional but nice)
+
+```apache
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+```
+
+If you ever put a real file under `/ace/` (like a static fallback), Apache serves it normally.
+
+### 2) Rewrite everything else to the PHP proxy
+
+```apache
+RewriteRule ^$ index.php?u=/ [QSA,L]
+RewriteRule ^(.+)$ index.php?u=/$1 [B,QSA,L]
+```
+
+So:
+
+* `/ace/` → `index.php?u=/`
+* `/ace/anything/here` → `index.php?u=/anything/here`
+
+`QSA` preserves the original query string.
+`B` ensures proper escaping of special characters in the rewrite substitution.
+
+---
+
+## CORS headers
+
+```apache
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+Header always set Access-Control-Max-Age "86400"
+```
+
+This makes it easier for:
+
+* Tampermonkey scripts
+* browser fetch() calls
+* tools hitting your endpoints
+
+**Note:** if you later introduce cookies/sessions that need credentialed requests, you’d tighten this (because `*` + credentials is not allowed). For now it matches your “public proxy” style.
+
+---
+
+# Tampermonkey Worker (`producer_api_tampermonkey.js`)
+
+This script is the “headless worker” that makes Producer.ai scraping possible even though Producer’s playlist data isn’t trivially accessible from your server.
+
+## What it does
+
+1. **Polls your server for jobs**
+
+   * WS first (fast) → `ws://127.0.0.1:80/ws`
+   * If WS blocked (common from https sites), it falls back to HTTP polling:
+
+     * `GET http://127.0.0.1:80/nextJob`
+
+2. **Navigates the browser to the job URL**
+
+   * The job is a Producer.ai playlist URL
+   * It stores it in Tampermonkey persistent storage so the job survives reloads
+
+3. **Waits for the page to render**
+
+   * `SCRAPE_DELAY_MS` (default 3500ms)
+
+4. **Scrapes songs from the DOM**
+
+   * Extracts UUIDs from `/song/<uuid>` links
+   * Infers `title` and `artist` from the row structure you validated
+
+5. **Reports results back to your server**
+
+   * `POST http://127.0.0.1:80/report`
+   * Sends:
+
+     * `url`
+     * `uuids`
+     * `songs: [{uuid,title,artist}]`
+     * `meta` diagnostics (workerId, UA, path)
+   * This wakes any waiting `/playlist` call on the server side
+
+---
+
+## Why it must run locally (not through xtdevelopment.net/ace/)
+
+Producer.ai pages are `https://...` and browser restrictions make cross-origin + local network access tricky.
+
+This worker uses:
+
+* `GM_xmlhttpRequest` (Tampermonkey’s privileged XHR)
+* `@connect 127.0.0.1` / `localhost`
+
+So it can talk to your local FastAPI server even when the webpage is Producer.ai.
+
+That’s why your config points to:
+
+```js
+const API = "http://127.0.0.1:80";
+```
+
+Meaning:
+
+* the Producer.ai worker talks to **your local server.py**
+* your public users talk to **xtdevelopment.net/ace/** (PHP proxy)
+* both paths ultimately feed the same job queue system if you choose to expose it
+
+---
+
+## Persistent job logic (why it survives reloads)
+
+The script stores:
+
+* `ncz_job_url` (current job)
+* `ncz_job_nav_tries` (anti-infinite-loop)
+* `ncz_last_report_hash` (dedupe reports)
+* `ncz_worker_id` (debug identity)
+
+So if Producer.ai reloads or you refresh, it continues the same job and reports once.
+
+---
+
+## WS-first, HTTP-forever fallback
+
+* It tries WS once (fast path):
+
+  * `ws://127.0.0.1:80/ws`
+* If blocked, it falls back to:
+
+  * poll `/nextJob` every `POLL_MS` (default 2000ms)
+
+This matches reality: many sites block `ws://` from `https://` contexts or your browser blocks mixed content.
+
+---
+
+## Output contract (what your server expects)
+
+The key design is: the worker reports only:
+
+```js
+songs: [{ uuid, title, artist }]
+```
+
+and `uuids` is derived from that list.
+
+That matches your server’s `/report` normalization logic, and the server writes/updates:
+
+* `all Producer.json` master list (uuid/title/artist only)
+
+---
+
+# How this all fits the “two proxy” architecture
+
+### Public user path (hidden server)
+
+Browser → `https://xtdevelopment.net/ace/...`
+Apache rewrite → `index.php?u=/...`
+PHP proxy → `http://<your_real_server>/...`
+FastAPI (`server.py`) serves JSON/mp3/html or proxies to ACE-Step.
+
+### Producer.ai scrape path (worker)
+
+Producer.ai tab → Tampermonkey → `http://127.0.0.1:80/nextJob`
+Worker navigates/scrapes → `http://127.0.0.1:80/report`
+FastAPI wakes `/playlist` waiters and updates master files.
+
+---
+
+# Quick “drop-in” README additions (you can paste above into your main README)
+
+### Files involved
+
+* `/ace/.htaccess` — rewrites clean URLs to the proxy script + adds CORS
+* `/ace/index.php` — PHP 5.2 reverse proxy that forwards all requests to your real FastAPI server
+* `producer_api_tampermonkey.js` — browser worker that scrapes Producer.ai and reports song UUID/title/artist back to your server
+
