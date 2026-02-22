@@ -845,7 +845,139 @@ These modules work best if your app provides:
 
 
 ------------
-multipart.sj
+multipart.js
 ------------
 
 
+# NCZ PATCH v3 (NO LOCKUP) — Advanced Source Audio
+
+This patch upgrades your existing **“Source Audio”** upload control into an **“Advanced”** mode **only when a file is selected**, and **forces `/release_task` to use multipart** with the selected audio file + your chosen parameters.
+
+It is designed to:
+- **avoid MutationObserver lockups**
+- **avoid DOM-wide observers**
+- **minimize button text churn**
+- **work with your existing app UI instead of replacing it**
+
+---
+
+## What this patch does
+
+### 1) Auto-detects when a Source Audio file is selected
+It considers Source Audio “selected” if **any** of these are true:
+
+- The Source Audio button tooltip contains:  
+  `title="Selected: <filename>"`
+- The upload audio player has a blob URL:  
+  `#uploadFilePlayer.src` starts with `blob:`
+- A file `<input type="file">` currently has `files.length > 0`
+
+When selected:
+- The Source Audio button label becomes **“Advanced”**
+- Clicking the button opens a modal (instead of triggering the default upload UI click path)
+
+When not selected:
+- Button label returns to its original value (usually “Source Audio”)
+- Clicking the button behaves normally
+
+---
+
+### 2) Adds an “Advanced Source Audio” modal
+When Advanced mode is ON, clicking the button opens a modal providing:
+
+- **Selected file display**
+  - shows filename and size (if file object exists)
+  - falls back to tooltip filename if needed
+
+- **Change file**
+  - clicks the detected `<input type="file">` directly if available
+  - otherwise temporarily “bypasses” the modal intercept and re-clicks the button once
+
+- **Clear upload**
+  - clears the file input
+  - hides and resets the upload player
+  - restores the button tooltip/title
+  - turns Advanced mode OFF
+
+- **task_type selector**
+  - radio: `cover` (default) or `repaint`
+  - persisted in localStorage
+
+- **Extra fields (key/value)**
+  - arbitrary additional form fields appended into multipart
+  - persisted in localStorage
+  - removable per entry
+
+---
+
+### 3) Patches `window.fetch` to force `/release_task` to multipart (when file selected)
+This is the core “make it actually work” behavior.
+
+When a file is selected (`state.file` exists) and the app makes a:
+- `POST /release_task` request
+
+The patch guarantees:
+- request is sent as **multipart/form-data**
+- `src_audio` field is a **real File**
+- `task_type` is included
+- any “Extra fields” are included
+
+#### Supported request bodies
+It handles `/release_task` requests where body is:
+- `FormData` (keeps multipart, injects fields)
+- JSON string (converts into FormData + injects `src_audio`)
+- plain object (treated like JSON and converted)
+
+If there is **no selected file**, it passes requests through unchanged.
+
+---
+
+## Install / placement
+
+### Recommended placement
+Paste this patch **after** your UI has created:
+- the Source Audio button
+- the upload file player
+- the file input (or at least after the UI shell exists)
+
+This patch includes a lightweight attach loop, so it can tolerate slightly-late mounting.
+
+### Idempotent guard
+It will only install once per page load:
+- `window.__NCZ_SRC_ADV_V3__`
+
+---
+
+## Required DOM / assumptions
+
+### Expected element IDs
+| Purpose | ID |
+|---|---|
+| Source Audio button | `__ncz_source_audio_btn__` |
+| Upload audio player | `uploadFilePlayer` |
+
+### File input detection
+The patch does **not** require a fixed ID for the `<input type="file">`.
+
+It uses a heuristic search:
+1. any input that already has `files.length`
+2. an input whose `name` or `id` matches `/src_audio|source|upload/i`
+3. an input whose `accept` includes `audio`
+4. otherwise the first `input[type="file"]`
+
+---
+
+## Persistent storage
+
+### localStorage key
+`NCZ_SRC_AUDIO_ADV_CFG_v3`
+
+### Stored structure
+```json
+{
+  "task_type": "cover",
+  "__kv__": [
+    { "k": "prompt", "v": "make it darker" },
+    { "k": "seed", "v": "123" }
+  ]
+}
