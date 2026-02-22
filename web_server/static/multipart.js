@@ -8367,7 +8367,7 @@ const DELAY_BEFORE_RADIO_MS = 2;
   const SONGROOT_ID = "songList";
   const VIDEO_ID  = "__ncz_right_lyrics_video__";
 
-  const EVENTS = ["pointerdown","mousedown","touchstart","keydown","wheel"];
+  const EVENTS = ["pointerdown","mousedown","touchstart","keydown"];
   const RETRY_EVERY_MS = 200;
   const PRIME_RETRY_MAX_MS = 4500;
 
@@ -11680,11 +11680,10 @@ function pickUuidsArray(data) {
 
 
 
-
 // ✅ NCZ PATCH: Suno Browser — show AUTHOR in the TRACK ROW TEXT (V1)
 // - Does NOT touch info boxes
 // - Only changes the displayed label in the Suno overlay list
-// - Works by: (1) intercept fetch to cache uuid->author/title, (2) mutate DOM rows that contain a UUID
+// - Works by: (1) intercept fetch to cache uuid->author/title/(audio_url+video_url), (2) mutate DOM rows that contain a UUID
 (() => {
   "use strict";
   if (window.__NCZ_SUNO_BROWSER_SHOW_AUTHOR_V1__) return;
@@ -11702,7 +11701,7 @@ function pickUuidsArray(data) {
 
   // global cache so you can inspect it
   const STORE = (window.__NCZ_SUNO_TRACK_MAP__ ||= {
-    byUuid: {},   // uuid -> { author, title, audio_url }
+    byUuid: {},   // uuid -> { author, title, audio_url, video_url }
     lastIngestTs: 0,
   });
 
@@ -11735,6 +11734,7 @@ function pickUuidsArray(data) {
         if (!uuid || !UUID_RX.test(uuid)) return;
 
         const title = clean(it.title || it.name || it.caption);
+
         const author =
           clean(it.author) ||
           clean(it.handle) ||
@@ -11747,16 +11747,21 @@ function pickUuidsArray(data) {
 
         const audio_url = clean(it.audio_url || it.audioUrl || it.audio || it.file || it.url || "");
 
+        // ✅ FIX: cache video_url too (common keys)
+        const video_url = clean(it.video_url || it.videoUrl || it.video || "");
+
         const key = lower(uuid);
         const cur = STORE.byUuid[key] || {};
         STORE.byUuid[key] = {
           author: author || cur.author || "",
           title: title || cur.title || "",
           audio_url: audio_url || cur.audio_url || "",
+          video_url: video_url || cur.video_url || "", // ✅ NEW
         };
         n++;
       };
 
+      // (keep your existing behavior: prefer items, else songs)
       if (items) items.forEach(upsert);
       else if (songs) songs.forEach(upsert);
 
@@ -11817,7 +11822,7 @@ function pickUuidsArray(data) {
       // avoid double-prepending if it already has author in the title line
       const node = pickTitleNode(b);
       const curLine = clean(node.textContent);
-      if (curLine && curLine.toLowerCase().startsWith(author.toLowerCase() + CFG.joiner.trim().toLowerCase())) {
+      if (author && curLine && curLine.toLowerCase().startsWith((author + CFG.joiner.trim()).toLowerCase())) {
         b.dataset.nczSunoAuthDecorated = "1";
         continue;
       }
@@ -11858,6 +11863,1002 @@ function pickUuidsArray(data) {
 
   if (CFG.log) console.log("[NCZ SUNO] show-author patch installed");
 })();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ✅ NCZ PATCH: Suno -> RIGHT video from map w/ COVERS + BOTH (V1.8)
+// - Fix: after Suno -> non-suno, immediately ensure a normal bg video is playing (prevents 1-track blank)
+// - Keeps all V1.7 behavior (UI under video, main sync only, both mode loop-off override, no random-flash bandwidth waste)
+(() => {
+  "use strict";
+  if (window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_8_COVERS__) return;
+  window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_8_COVERS__ = true;
+
+  // Detect competing drivers (can't stop them automatically)
+  if (
+    window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_7_COVERS__ ||
+    window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_6_COVERS__ ||
+    window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_5__ ||
+    window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_2__ ||
+    window.__NCZ_SUNO_VIDEO_FROM_MAP_V1_7__
+  ) {
+    console.warn("[NCZ SUNO VIDEO V1.8] WARNING: another Suno video driver flag exists. Remove/disable the other driver or you WILL get lock fights.");
+  }
+
+  const CFG = {
+    audioId: "player",
+    videoId: "__ncz_right_lyrics_video__",
+    lyricsPreId: "__ncz_right_lyrics_text__",
+
+    pollMs: 250,
+    bothMainSliceSec: 10.0,
+
+    // MAIN-only sync (video_url only)
+    sync: {
+      maxDriftSec: 0.33,
+      minDriftCorrectMs: 140,
+      forceOnSeek: true,
+      syncRate: true,
+      syncPlayPause: true,
+    },
+
+    fallback: {
+      enabled: true,
+      timeoutMs: 5500,
+      minAudioTimeSec: 0.45,
+      minVideoTimeSec: 0.06,
+      minReadyState: 2,
+      durationCheckMs: 1700,
+      minDurationSec: 1.01,
+      forceNormalNow: true,
+    },
+
+    // ✅ NEW: after unlock to non-suno, give other script a moment, then force a normal bg if still blank
+    postUnlockNormal: {
+      enabled: true,
+      delayMs: 70,           // small delay to let your normal driver set src first
+      minDurationSec: 1.01,  // if duration is tiny/invalid, treat as not-ready
+      log: true,
+    },
+
+    log: true,
+  };
+
+  const UI = {
+    wrapId: "__ncz_suno_video_mode_ui__",
+    styleId: "__ncz_suno_video_mode_ui_style__",
+    coversId: "__ncz_suno_play_covers_chk__",
+    bothId: "__ncz_suno_play_both_chk__",
+  };
+
+  // ---- MODE persistence (default BOTH)
+  const LS_MODE_KEY = "NCZ_UI_SUNO_VIDEO_MODE"; // "main"|"cover"|"both"
+  const MODE = (window.__NCZ_SUNO_VIDEO_MODE__ ||= { mode: "both" });
+
+  (function initModeFromStorage() {
+    try {
+      const saved = String(localStorage.getItem(LS_MODE_KEY) || "").toLowerCase();
+      if (saved === "main" || saved === "cover" || saved === "both") {
+        MODE.mode = saved;
+      } else {
+        MODE.mode = "both"; // default
+        localStorage.setItem(LS_MODE_KEY, "both");
+      }
+    } catch {
+      MODE.mode = "both";
+    }
+  })();
+
+  const clean = (v) => (v == null ? "" : String(v).trim());
+  const lower = (s) => clean(s).toLowerCase();
+
+  const UUID_RX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+  function getAudioEl() { return document.getElementById(CFG.audioId) || null; }
+  function getVideoEl() { return document.getElementById(CFG.videoId) || null; }
+  function getLyricsPre() { return document.getElementById(CFG.lyricsPreId) || null; }
+
+  function isSunoAudioUrl(u) {
+    u = clean(u);
+    return !!u && u.includes("suno.ai/") && u.toLowerCase().includes(".mp3");
+  }
+  function extractUuidFromUrl(u) {
+    const m = clean(u).match(UUID_RX);
+    return m ? m[0] : "";
+  }
+
+  function getRec(uuid) {
+    // Prefer your accessor if present
+    try {
+      if (typeof window.__nczSunoMapGet === "function") {
+        const r = window.__nczSunoMapGet(uuid);
+        if (r && typeof r === "object") return r;
+      }
+    } catch { }
+    const store = window.__NCZ_SUNO_TRACK_MAP__;
+    const byUuid = store && store.byUuid;
+    return byUuid ? (byUuid[lower(uuid)] || null) : null;
+  }
+
+  function deriveMainFromAudio(audioUrl) {
+    const a = clean(audioUrl);
+    if (!a) return "";
+    return a.replace(/\.mp3(\b|[?#].*)$/i, ".mp4$1");
+  }
+
+  function getMainVideo(uuid) {
+    const rec = getRec(uuid);
+    if (!rec) return "";
+    let v = clean(rec.video_url || rec.videoUrl || rec.video || "");
+    if (v && /\.mp4(\b|[?#].*)$/i.test(v)) return v;
+    const a = clean(rec.audio_url || rec.audioUrl || rec.audio || "");
+    const d = deriveMainFromAudio(a);
+    if (d) return d;
+    return "";
+  }
+
+  function getCoverVideo(uuid) {
+    const rec = getRec(uuid);
+    if (!rec) return "";
+    return clean(rec.video_cover_url || rec.videoCoverUrl || rec.cover_video_url || "");
+  }
+
+  function ensureUiStyle() {
+    if (document.getElementById(UI.styleId)) return;
+    const st = document.createElement("style");
+    st.id = UI.styleId;
+    st.textContent = `
+      #${UI.wrapId}{
+        display:flex;
+        align-items:center;
+        justify-content:flex-start;
+        gap:14px;
+        flex-wrap:wrap;
+
+        margin: 10px 0 10px 0;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.18);
+        color: rgba(233,238,252,.92);
+        font-size: 12px;
+        font-weight: 900;
+      }
+      #${UI.wrapId} label{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        user-select:none;
+        cursor:pointer;
+      }
+      #${UI.wrapId} input[type="checkbox"]{
+        width: 16px; height: 16px;
+        cursor:pointer;
+        accent-color: rgba(106,166,255,.85);
+      }
+      #${UI.wrapId} .__hint__{ opacity:.72; font-weight:800; }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function getMode() {
+    const m = String(MODE.mode || "main").toLowerCase();
+    return (m === "cover" || m === "both") ? m : "main";
+  }
+
+  let __forceRelock = false;
+
+  function syncUiFromMode() {
+    const wrap = document.getElementById(UI.wrapId);
+    if (!wrap) return;
+    const covers = document.getElementById(UI.coversId);
+    const both = document.getElementById(UI.bothId);
+    const mode = getMode();
+
+    if (both) both.checked = (mode === "both");
+    if (covers) {
+      covers.checked = (mode === "cover" || mode === "both");
+      covers.disabled = (mode === "both");
+    }
+  }
+
+  function setMode(m) {
+    m = String(m || "").toLowerCase();
+    MODE.mode = (m === "cover" || m === "both") ? m : "main";
+
+    // ✅ persist
+    try { localStorage.setItem(LS_MODE_KEY, MODE.mode); } catch { }
+
+    if (CFG.log) console.log("[NCZ SUNO VIDEO V1.8] mode =", MODE.mode);
+    syncUiFromMode();
+    __forceRelock = true;
+  }
+
+  function mountUi() {
+    const pre = getLyricsPre();
+    if (!pre) return false;
+
+    if (document.getElementById(UI.wrapId)) return true;
+
+    ensureUiStyle();
+
+    const wrap = document.createElement("div");
+    wrap.id = UI.wrapId;
+
+    const labC = document.createElement("label");
+    const chkC = document.createElement("input");
+    chkC.type = "checkbox";
+    chkC.id = UI.coversId;
+    const txtC = document.createElement("span");
+    txtC.textContent = "Play Covers";
+    labC.appendChild(chkC);
+    labC.appendChild(txtC);
+
+    const labB = document.createElement("label");
+    const chkB = document.createElement("input");
+    chkB.type = "checkbox";
+    chkB.id = UI.bothId;
+    const txtB = document.createElement("span");
+    txtB.textContent = "Both";
+    labB.appendChild(chkB);
+    labB.appendChild(txtB);
+
+    const hint = document.createElement("span");
+    hint.className = "__hint__";
+    hint.textContent = "(Suno)";
+
+    wrap.appendChild(labC);
+    wrap.appendChild(labB);
+    wrap.appendChild(hint);
+
+    // ✅ Insert UI ABOVE the lyrics <pre> (so it appears UNDER the video)
+    pre.parentNode.insertBefore(wrap, pre);
+
+    chkC.addEventListener("change", () => {
+      // covers checkbox overrides both
+      if (getMode() === "both") MODE.mode = "main";
+      setMode(chkC.checked ? "cover" : "main");
+    });
+
+    chkB.addEventListener("change", () => {
+      if (chkB.checked) setMode("both");
+      else setMode(chkC.checked ? "cover" : "main");
+    });
+
+    syncUiFromMode();
+    console.log("[NCZ SUNO VIDEO V1.8] UI mounted above #" + CFG.lyricsPreId);
+    return true;
+  }
+
+  // keep trying briefly
+  (function () {
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+      if (mountUi()) { clearInterval(t); return; }
+      if (tries === 1) console.log("[NCZ SUNO VIDEO V1.8] waiting for #" + CFG.lyricsPreId + " …");
+      if (tries > 120) { clearInterval(t); console.warn("[NCZ SUNO VIDEO V1.8] UI mount failed (no lyrics pre)"); }
+    }, 250);
+  })();
+
+  // -----------------------------
+  // Video driver core
+  // -----------------------------
+  let lockActive = false;
+  let lockUuid = "";
+  let lockUrl = "";
+  let lockKind = "main"; // "main"|"cover"
+
+  // BOTH state
+  let bothPhase = "main";     // "main"|"cover"
+  let bothMainDeadlineMs = 0;
+
+  // MAIN sync state
+  let lastDriftFixMs = 0;
+  let pendingSeek = null;
+
+  // fallback state
+  let lockToken = 0;
+  let lockHealthy = false;
+  let lastVideoTimeSeen = -1;
+  let failTimer = null;
+  let durTimer = null;
+
+  // suppress relock for same broken track
+  let suspendUuid = "";
+  let suspendAudioSrc = "";
+
+  // ✅ BOTH-mode loop override
+  let __savedLoopState = null;   // { loop:boolean, hadAttr:boolean }
+  let __loopForcedOff = false;
+
+  function __rememberLoopState(video) {
+    if (!video || __savedLoopState) return;
+    __savedLoopState = { loop: !!video.loop, hadAttr: video.hasAttribute("loop") };
+  }
+  function __forceLoop(video, on) {
+    if (!video) return;
+    try {
+      video.loop = !!on;
+      if (on) video.setAttribute("loop", "");
+      else video.removeAttribute("loop");
+    } catch { }
+  }
+  function __applyBothLoopPolicy(video) {
+    if (!video) return;
+
+    const shouldForceOff = !!(lockActive && getMode() === "both" && lockUuid);
+
+    if (shouldForceOff) {
+      __rememberLoopState(video);
+
+      if (video.loop || video.hasAttribute("loop")) {
+        __forceLoop(video, false);
+      }
+
+      if (!__loopForcedOff && CFG.log) {
+        __loopForcedOff = true;
+        console.log("[NCZ SUNO VIDEO V1.8] loop forced OFF (both mode)");
+      }
+      return;
+    }
+
+    if (__savedLoopState) {
+      __forceLoop(video, __savedLoopState.loop);
+      if (!__savedLoopState.hadAttr) {
+        try { video.removeAttribute("loop"); } catch { }
+      }
+      __savedLoopState = null;
+
+      if (__loopForcedOff && CFG.log) {
+        __loopForcedOff = false;
+        console.log("[NCZ SUNO VIDEO V1.8] loop restored");
+      }
+    }
+  }
+
+  function stopTimers() {
+    if (failTimer) clearTimeout(failTimer);
+    if (durTimer) clearTimeout(durTimer);
+    failTimer = null; durTimer = null;
+  }
+
+  function safePlay(el) {
+    try {
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => { });
+    } catch { }
+  }
+  function safePause(el) { try { el.pause(); } catch { } }
+
+  function applyRateCoupling(audio, video) {
+    if (!CFG.sync.syncRate) return;
+    try {
+      const ar = Number(audio.playbackRate || 1) || 1;
+      if (video.playbackRate !== ar) video.playbackRate = ar;
+    } catch { }
+  }
+  function applyPlayPauseCoupling(audio, video) {
+    if (!CFG.sync.syncPlayPause) return;
+    if (audio.paused) safePause(video);
+    else safePlay(video);
+  }
+
+  function isHookMode(video) {
+    try { return !!(video && video.controls && video.muted === false); } catch { return false; }
+  }
+
+  // ✅ ONLY sync when kind === "main"
+  function seekSyncAllowed() {
+    return !!(lockActive && lockKind === "main" && lockUrl);
+  }
+
+  function setVideoTimeToAudio(audio, video, force = false) {
+    if (!seekSyncAllowed()) return;
+    const now = Date.now();
+    if (!force && (now - lastDriftFixMs < CFG.sync.minDriftCorrectMs)) return;
+
+    const at = Number(audio.currentTime || 0) || 0;
+    if (video.readyState < 1) { pendingSeek = at; return; }
+
+    const vt = Number(video.currentTime || 0) || 0;
+    const diff = Math.abs(vt - at);
+
+    if (force || diff > CFG.sync.maxDriftSec) {
+      try {
+        video.currentTime = at;
+        lastDriftFixMs = now;
+      } catch {
+        pendingSeek = at;
+      }
+    }
+  }
+
+  function flushPendingSeek(video) {
+    if (!seekSyncAllowed()) return;
+    if (pendingSeek == null) return;
+    if (video.readyState < 1) return;
+    try {
+      video.currentTime = pendingSeek;
+      pendingSeek = null;
+      lastDriftFixMs = Date.now();
+    } catch { }
+  }
+
+  function hardClearVideo(video) {
+    if (!video) return;
+    try { video.pause(); } catch { }
+    try { video.removeAttribute("src"); } catch { }
+    try { video.src = ""; } catch { }
+    try { video.load(); } catch { }
+  }
+
+  function durationLooksBroken(video, min = CFG.fallback.minDurationSec) {
+    const d = Number(video.duration);
+    if (!Number.isFinite(d)) return false;
+    return (d > 0 && d < min);
+  }
+
+  function forceNormalVideoNow(reason) {
+    if (!CFG.fallback.forceNormalNow) return false;
+    const v = getVideoEl();
+    if (v && isHookMode(v)) return false;
+
+    try {
+      if (window.__nczLyricsVideoList && typeof window.__nczLyricsVideoList.playNow === "function") {
+        const ok = window.__nczLyricsVideoList.playNow();
+        if (ok) {
+          console.log("[NCZ SUNO VIDEO V1.8] forced normal bg via __nczLyricsVideoList.playNow()", { reason });
+          return true;
+        }
+      }
+    } catch { }
+    console.warn("[NCZ SUNO VIDEO V1.8] could not force normal bg video", { reason });
+    return false;
+  }
+
+  // ✅ NEW: after Suno unlock -> non-suno track, ensure a normal bg video is present/playing
+  let __postUnlockGuardSrc = "";
+  function ensureNormalBgAfterSunoUnlock(nonSunoAudioSrc) {
+    if (!CFG.postUnlockNormal.enabled) return;
+    const src = clean(nonSunoAudioSrc);
+    if (!src || src === __postUnlockGuardSrc) return;
+    __postUnlockGuardSrc = src;
+
+    setTimeout(() => {
+      const v = getVideoEl();
+      if (!v) return;
+      if (isHookMode(v)) return;
+
+      // If another script already set a normal mp4, do nothing
+      const cur = clean(v.currentSrc || v.src || "");
+      const looksNormalSet = !!cur && !cur.includes("suno.ai/") && /\.mp4(\b|[?#].*)$/i.test(cur);
+
+      // If it exists + is playing-ish, do nothing
+      const dur = Number(v.duration);
+      const durOk = Number.isFinite(dur) ? (dur >= CFG.postUnlockNormal.minDurationSec) : false;
+      const playingOk = (!v.paused) && (Number(v.currentTime || 0) > 0.01);
+
+      if (looksNormalSet && (durOk || playingOk)) {
+        if (CFG.postUnlockNormal.log) {
+          console.log("[NCZ SUNO VIDEO V1.8] post-unlock: normal bg already present", { cur, dur, playingOk });
+        }
+        return;
+      }
+
+      // If blank or still weird, force it
+      const forced = forceNormalVideoNow("post-suno-unlock");
+      if (CFG.postUnlockNormal.log) {
+        console.log("[NCZ SUNO VIDEO V1.8] post-unlock: forced normal bg", { forced, curBefore: cur });
+      }
+    }, CFG.postUnlockNormal.delayMs);
+  }
+
+  function clearLock(reason) {
+    if (!lockActive) return;
+
+    stopTimers();
+
+    const v = getVideoEl();
+    const old = lockUrl;
+
+    lockActive = false;
+
+    // restore loop immediately if we were forcing it off
+    if (v) __applyBothLoopPolicy(v);
+
+    const prevUuid = lockUuid;
+
+    lockUuid = "";
+    lockUrl = "";
+    lockKind = "main";
+    pendingSeek = null;
+
+    bothPhase = "main";
+    bothMainDeadlineMs = 0;
+
+    if (v) {
+      try {
+        delete v.dataset.__nczSunoVideoLocked;
+        delete v.dataset.__nczSunoVideoUuid;
+        delete v.dataset.__nczSunoVideoUrl;
+        delete v.dataset.__nczSunoVideoKind;
+      } catch { }
+      try {
+        const cur = clean(v.currentSrc || v.src || "");
+        if (cur && cur === old) hardClearVideo(v);
+      } catch { }
+    }
+
+    if (CFG.log) console.log("[NCZ SUNO VIDEO V1.8] UNLOCK", reason || "", prevUuid ? { prevUuid } : "");
+  }
+
+  function doFallback(reason, extra) {
+    const a = getAudioEl();
+    const v = getVideoEl();
+    const audioSrc = clean(a?.currentSrc || a?.src || "");
+
+    suspendUuid = lockUuid;
+    suspendAudioSrc = audioSrc;
+
+    const lockedUrl = lockUrl;
+    clearLock("fallback:" + reason);
+
+    if (v) hardClearVideo(v);
+
+    const forced = forceNormalVideoNow("suno-fallback:" + reason);
+
+    console.warn("[NCZ SUNO VIDEO V1.8] FALLBACK:", reason, {
+      uuid: suspendUuid,
+      audioSrc,
+      lockUrl: lockedUrl,
+      forcedNormal: forced,
+      videoSrc: clean(v?.currentSrc || v?.src || ""),
+      readyState: v ? v.readyState : null,
+      videoPaused: v ? v.paused : null,
+      videoTime: v ? Number(v.currentTime || 0) : null,
+      videoDuration: v ? (Number.isFinite(Number(v.duration)) ? Number(v.duration) : String(v.duration)) : null,
+      ...(extra || {})
+    });
+  }
+
+  function armFallbackTimers(token) {
+    if (!CFG.fallback.enabled) return;
+    stopTimers();
+
+    failTimer = setTimeout(() => {
+      if (!lockActive) return;
+      if (token !== lockToken) return;
+
+      const a = getAudioEl();
+      const v = getVideoEl();
+      if (!a || !v) return;
+      if (a.paused) return;
+
+      const at = Number(a.currentTime || 0) || 0;
+      if (at < CFG.fallback.minAudioTimeSec) return;
+
+      if (durationLooksBroken(v)) return doFallback("bad-duration", { phase: "failTimer", audioTime: at });
+
+      const rs = Number(v.readyState || 0) || 0;
+      const vt = Number(v.currentTime || 0) || 0;
+
+      const looksPlaying = !v.paused && rs >= CFG.fallback.minReadyState && vt >= CFG.fallback.minVideoTimeSec;
+      if (!looksPlaying) doFallback("not-playing", { phase: "failTimer", audioTime: at });
+    }, CFG.fallback.timeoutMs);
+
+    durTimer = setTimeout(() => {
+      if (!lockActive) return;
+      if (token !== lockToken) return;
+
+      const a = getAudioEl();
+      const v = getVideoEl();
+      if (!a || !v) return;
+      if (a.paused) return;
+
+      const at = Number(a.currentTime || 0) || 0;
+      if (at < CFG.fallback.minAudioTimeSec) return;
+
+      if (durationLooksBroken(v)) doFallback("bad-duration", { phase: "durTimer", audioTime: at });
+    }, CFG.fallback.durationCheckMs);
+  }
+
+  function applyLockedVideo(video, url, kind) {
+    if (!video || !url) return;
+
+    video.dataset.__nczSunoVideoLocked = "1";
+    video.dataset.__nczSunoVideoUuid = lockUuid;
+    video.dataset.__nczSunoVideoUrl = url;
+    video.dataset.__nczSunoVideoKind = kind;
+
+    // loop behavior (base intent)
+    const mode = getMode();
+    if (kind === "cover" && mode === "both") {
+      video.loop = false;
+      try { video.removeAttribute("loop"); } catch { }
+    } else {
+      video.loop = true;
+      try { video.setAttribute("loop", ""); } catch { }
+    }
+
+    const cur = clean(video.currentSrc || video.src || "");
+    if (cur !== url) {
+      video.src = url;
+      try { video.load(); } catch { }
+    }
+
+    // cover always starts at 0
+    if (kind === "cover") {
+      pendingSeek = null;
+      try { video.currentTime = 0; } catch { }
+    }
+
+    safePlay(video);
+
+    // enforce BOTH-mode loop policy after setting base intent
+    __applyBothLoopPolicy(video);
+  }
+
+  function setLock(uuid, url, kind) {
+    const v = getVideoEl();
+    const a = getAudioEl();
+    if (!v || !a) return;
+
+    lockActive = true;
+    lockUuid = uuid;
+    lockUrl = url;
+    lockKind = kind;
+
+    lockToken++;
+    lockHealthy = false;
+    lastVideoTimeSeen = -1;
+
+    applyLockedVideo(v, url, kind);
+
+    // Couple playback + rate always; seek sync only for MAIN
+    applyRateCoupling(a, v);
+    applyPlayPauseCoupling(a, v);
+
+    if (kind === "main") {
+      setVideoTimeToAudio(a, v, true);
+      // BOTH: set deadline when entering main
+      if (getMode() === "both") {
+        bothPhase = "main";
+        bothMainDeadlineMs = Date.now() + Math.round(CFG.bothMainSliceSec * 1000);
+      }
+    }
+
+    armFallbackTimers(lockToken);
+
+    if (CFG.log) console.log("[NCZ SUNO VIDEO V1.8] LOCK", { uuid, kind, url });
+  }
+
+  // ---------- SRC LOCKING (prevents random bg driver from stealing src while locked) ----------
+  function findSrcDescriptor(el) {
+    let p = el;
+    for (let i = 0; i < 12 && p; i++) {
+      const d = Object.getOwnPropertyDescriptor(p, "src");
+      if (d && (typeof d.get === "function" || typeof d.set === "function")) return d;
+      p = Object.getPrototypeOf(p);
+    }
+    const candidates = [
+      window.HTMLMediaElement && window.HTMLMediaElement.prototype,
+      window.HTMLVideoElement && window.HTMLVideoElement.prototype,
+      window.Element && window.Element.prototype,
+    ].filter(Boolean);
+    for (const proto of candidates) {
+      const d = Object.getOwnPropertyDescriptor(proto, "src");
+      if (d && (typeof d.get === "function" || typeof d.set === "function")) return d;
+    }
+    return null;
+  }
+
+  function bindVideoOnce(video) {
+    if (video.__nczSunoV18Bound) return;
+    video.__nczSunoV18Bound = true;
+
+    // lock-proof setAttribute(src/loop) while locked
+    try {
+      if (!video.__nczV18SetAttrWrapped) {
+        const _setAttribute = video.setAttribute.bind(video);
+        video.setAttribute = function (name, value) {
+          try {
+            const nm = name ? String(name).toLowerCase() : "";
+            if (lockActive && nm === "src") value = lockUrl || value;
+
+            // in BOTH mode, block other scripts from forcing loop back on
+            if (lockActive && getMode() === "both" && nm === "loop") return; // swallow
+          } catch { }
+          return _setAttribute(name, value);
+        };
+        video.__nczV18SetAttrWrapped = true;
+      }
+    } catch { }
+
+    // lock-proof video.src setter while locked
+    try {
+      if (!video.__nczV18SrcWrapped) {
+        const desc = findSrcDescriptor(video);
+        if (desc && typeof desc.set === "function" && typeof desc.get === "function") {
+          Object.defineProperty(video, "src", {
+            configurable: true,
+            enumerable: !!desc.enumerable,
+            get() { try { return desc.get.call(video); } catch { return ""; } },
+            set(v) {
+              try {
+                if (lockActive && lockUrl) v = lockUrl;
+                return desc.set.call(video, v);
+              } catch {
+                try { return video.setAttribute("src", (lockActive && lockUrl) ? lockUrl : v); } catch { }
+              }
+            }
+          });
+          video.__nczV18SrcWrapped = true;
+        }
+      }
+    } catch { }
+
+    video.addEventListener("loadedmetadata", () => {
+      __applyBothLoopPolicy(video);
+      if (seekSyncAllowed()) flushPendingSeek(video);
+
+      if (CFG.fallback.enabled && lockActive) {
+        const a = getAudioEl();
+        if (a && !a.paused) {
+          const at = Number(a.currentTime || 0) || 0;
+          if (at >= CFG.fallback.minAudioTimeSec && durationLooksBroken(video)) {
+            doFallback("bad-duration", { phase: "loadedmetadata", audioTime: at });
+          }
+        }
+      }
+    }, true);
+
+    video.addEventListener("timeupdate", () => {
+      if (!lockActive) return;
+      const vt = Number(video.currentTime || 0) || 0;
+      if (lastVideoTimeSeen >= 0 && vt > lastVideoTimeSeen + 0.02) lockHealthy = true;
+      lastVideoTimeSeen = vt;
+    }, true);
+
+    video.addEventListener("playing", () => { lockHealthy = true; }, true);
+
+    video.addEventListener("error", (e) => {
+      if (!lockActive || !CFG.fallback.enabled) return;
+      try { e.stopImmediatePropagation(); e.stopPropagation(); } catch { }
+      doFallback("video-error", { phase: "event" });
+    }, true);
+
+    video.addEventListener("stalled", (e) => {
+      if (!lockActive || !CFG.fallback.enabled) return;
+      try { e.stopImmediatePropagation(); e.stopPropagation(); } catch { }
+      doFallback("video-stalled", { phase: "event" });
+    }, true);
+
+    // stop ended propagation while locked
+    video.addEventListener("ended", (e) => {
+      if (lockActive) {
+        try { e.stopImmediatePropagation(); e.stopPropagation(); } catch { }
+      }
+
+      // BOTH: when cover ends, switch back to main ASAP (and resync)
+      if (!lockActive) return;
+      if (getMode() !== "both") return;
+      if (lockKind !== "cover") return;
+
+      bothPhase = "main";
+      bothMainDeadlineMs = Date.now() + Math.round(CFG.bothMainSliceSec * 1000);
+      __forceRelock = true;
+
+      setTimeout(() => { try { tick(); } catch { } }, 0);
+    }, true);
+
+    if (CFG.log) console.log("[NCZ SUNO VIDEO V1.8] video bound + src-lock active when locked");
+  }
+
+  function bindAudioOnce(audio) {
+    if (audio.__nczSunoV18Bound) return;
+    audio.__nczSunoV18Bound = true;
+
+    const onSeek = () => {
+      if (!CFG.sync.forceOnSeek) return;
+      const v = getVideoEl();
+      if (!v) return;
+      setVideoTimeToAudio(audio, v, true);
+    };
+
+    const onTime = () => {
+      const v = getVideoEl();
+      if (!v) return;
+      setVideoTimeToAudio(audio, v, false);
+    };
+
+    const onRate = () => {
+      const v = getVideoEl();
+      if (!v) return;
+      applyRateCoupling(audio, v);
+    };
+
+    const onPlayPause = () => {
+      const v = getVideoEl();
+      if (!v) return;
+      applyPlayPauseCoupling(audio, v);
+    };
+
+    audio.addEventListener("seeking", onSeek, true);
+    audio.addEventListener("seeked", onSeek, true);
+    audio.addEventListener("timeupdate", onTime, true);
+
+    audio.addEventListener("ratechange", onRate, true);
+    audio.addEventListener("play", onPlayPause, true);
+    audio.addEventListener("pause", onPlayPause, true);
+
+    if (CFG.log) console.log("[NCZ SUNO VIDEO V1.8] audio bound");
+  }
+
+  let lastAudioSrc = "";
+
+  function tick() {
+    const a = getAudioEl();
+    const v = getVideoEl();
+    if (!a || !v) return;
+
+    bindAudioOnce(a);
+    bindVideoOnce(v);
+
+    mountUi();
+    __applyBothLoopPolicy(v);
+
+    const src = clean(a.currentSrc || a.src || "");
+    if (!src) return;
+
+    const changedTrack = (src !== lastAudioSrc);
+    if (changedTrack) {
+      lastAudioSrc = src;
+      __forceRelock = true;
+      bothPhase = "main";
+      bothMainDeadlineMs = 0;
+
+      if (suspendAudioSrc && suspendAudioSrc !== src) {
+        suspendAudioSrc = "";
+        suspendUuid = "";
+      }
+    }
+
+    // ✅ FIX: if we just left a Suno lock and now on non-suno, ensure bg video immediately
+    if (!isSunoAudioUrl(src)) {
+      if (lockActive) {
+        clearLock("non-suno");
+        ensureNormalBgAfterSunoUnlock(src);
+      } else {
+        // also: if we're non-suno and video is blank (rare), help it once per track
+        ensureNormalBgAfterSunoUnlock(src);
+      }
+      return;
+    }
+
+    const uuid = extractUuidFromUrl(src);
+    if (!uuid) return;
+
+    if (CFG.fallback.enabled && suspendAudioSrc === src && suspendUuid === uuid) {
+      if (lockActive) clearLock("suspended-track");
+      return;
+    }
+
+    const mainUrl = getMainVideo(uuid);
+    const coverUrl = getCoverVideo(uuid);
+    const mode = getMode();
+
+    // BOTH switching (only while playing)
+    if (mode === "both" && !a.paused && coverUrl) {
+      if (bothPhase === "main") {
+        if (!bothMainDeadlineMs) bothMainDeadlineMs = Date.now() + Math.round(CFG.bothMainSliceSec * 1000);
+        if (Date.now() >= bothMainDeadlineMs) {
+          bothPhase = "cover";
+          bothMainDeadlineMs = 0;
+          __forceRelock = true;
+        }
+      }
+    }
+
+    let wantKind = "main";
+    let wantUrl = mainUrl;
+
+    if (mode === "cover") {
+      wantKind = "cover";
+      wantUrl = coverUrl || mainUrl;
+    } else if (mode === "both" && coverUrl) {
+      wantKind = (bothPhase === "cover") ? "cover" : "main";
+      wantUrl = (wantKind === "cover") ? coverUrl : mainUrl;
+    }
+
+    if (!wantUrl) {
+      if (lockActive) clearLock("no-video-url");
+      return;
+    }
+
+    const needsRelock =
+      __forceRelock ||
+      !lockActive ||
+      lockUuid !== uuid ||
+      lockKind !== wantKind ||
+      lockUrl !== wantUrl;
+
+    if (needsRelock) {
+      __forceRelock = false;
+      setLock(uuid, wantUrl, wantKind);
+
+      if (wantKind === "main") setVideoTimeToAudio(a, v, true);
+      return;
+    }
+
+    applyRateCoupling(a, v);
+    applyPlayPauseCoupling(a, v);
+  }
+
+  // run immediately once
+  try { tick(); } catch { }
+
+  setInterval(tick, CFG.pollMs);
+
+  window.__NCZ_SUNO_VIDEO_V1_8_STATE__ = () => ({
+    ok: true,
+    mode: getMode(),
+    lockActive, lockUuid, lockKind, lockUrl,
+    bothPhase,
+    audioSrc: clean(getAudioEl()?.currentSrc || getAudioEl()?.src || ""),
+    videoSrc: clean(getVideoEl()?.currentSrc || getVideoEl()?.src || ""),
+    loop: (() => {
+      const v = getVideoEl();
+      return v ? { loop: !!v.loop, hasAttr: v.hasAttribute("loop") } : null;
+    })(),
+    savedLoopState: __savedLoopState,
+    postUnlockGuardSrc: __postUnlockGuardSrc
+  });
+
+  console.log("[NCZ SUNO VIDEO V1.8] installed (post-suno non-suno video ensure)");
+})();
+
+
+
 
 
 
@@ -13198,4 +14199,1036 @@ function pickUuidsArray(data) {
 
 
 
+// ✅ NCZ PATCH: Suno MASTER overlay background-click guard (V1)
+// Fix: Clicking empty/background area inside Suno overlay (esp. All Suno master view)
+//      should NOT close the Music Archive/menu.
+// Strategy: Capture at window-level and swallow ONLY non-interactive clicks that occur
+//           inside the Suno overlay while it's visible.
 
+(() => {
+  "use strict";
+  if (window.__NCZ_SUNO_BG_CLICK_GUARD_V1__) return;
+  window.__NCZ_SUNO_BG_CLICK_GUARD_V1__ = true;
+
+  const OVERLAY_ID = "__ncz_suno_pl_overlay__";
+  const LIST_ID = "__ncz_suno_pl_list__";
+
+  function isVisible(el) {
+    if (!el || el.nodeType !== 1) return false;
+    try {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch {
+      return true;
+    }
+  }
+
+  function isInteractiveTarget(t) {
+    if (!t || !t.closest) return false;
+    return !!t.closest(
+      "button,a,input,textarea,select,option,label,[role='button'],[contenteditable='true']"
+    );
+  }
+
+  // Avoid breaking scrollbar drag/click: if user is clicking in the scrollbar gutter,
+  // don't swallow.
+  function isOnScrollbar(el, e) {
+    try {
+      const r = el.getBoundingClientRect();
+      const sbw = el.offsetWidth - el.clientWidth;   // vertical scrollbar width
+      const sbh = el.offsetHeight - el.clientHeight; // horizontal scrollbar height
+
+      // vertical scrollbar zone (right side)
+      if (sbw > 0 && e.clientX >= (r.right - sbw) && e.clientX <= r.right) return true;
+
+      // horizontal scrollbar zone (bottom)
+      if (sbh > 0 && e.clientY >= (r.bottom - sbh) && e.clientY <= r.bottom) return true;
+    } catch {}
+    return false;
+  }
+
+  function guard(e) {
+    const ov = document.getElementById(OVERLAY_ID);
+    if (!ov || !isVisible(ov)) return;
+
+    const t = e.target;
+    if (!t || !ov.contains(t)) return;
+
+    // Let real controls work normally
+    if (isInteractiveTarget(t)) return;
+
+    // If click is in the list area, don't interfere with scrollbar interactions
+    const list = ov.querySelector("#" + LIST_ID);
+    if (list && list.contains(t) && isOnScrollbar(list, e)) return;
+
+    // Swallow non-interactive clicks inside overlay (blank/background)
+    try { e.stopPropagation(); } catch {}
+    try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch {}
+
+    // Only prevent default on actual click-type events (safer for scrolling)
+    if (e.type === "click" || e.type === "auxclick" || e.type === "dblclick" || e.type === "contextmenu") {
+      try { e.preventDefault(); } catch {}
+    }
+  }
+
+  // Capture phase so nothing upstream gets the event.
+  ["pointerdown", "mousedown", "click", "auxclick", "dblclick", "contextmenu", "touchstart"].forEach((evt) => {
+    window.addEventListener(evt, guard, true);
+  });
+
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ✅ NCZ PATCH: Cache MASTER playlists (Suno + Producer) in-memory only (V1)
+// - Caches master playlist fetch responses AFTER first successful load
+// - Serves cached response on subsequent loads until page reload
+// - NO localStorage/sessionStorage (RAM only)
+// - Safe wrapper: does not break other fetch patches (wraps whatever window.fetch is now)
+// - Bypass cache by adding: ?nocache=1  OR  ?force=true  OR  header "x-ncz-nocache: 1"
+
+(() => {
+  "use strict";
+  if (window.__NCZ_MASTER_PLAYLIST_CACHE_V1__) return;
+  window.__NCZ_MASTER_PLAYLIST_CACHE_V1__ = true;
+
+  const CFG = {
+    log: true,
+
+    // Treat these as "MASTER playlist" endpoints
+    // (edit if your actual endpoints differ)
+    sunoMasterMatchers: [
+      /\/suno\/all(\?|#|$)/i,          // .../suno/all
+      /\/ace\/suno\/all(\?|#|$)/i,     // .../ace/suno/all
+    ],
+    producerMasterMatchers: [
+      /\/producer\/all(\?|#|$)/i,      // .../producer/all
+      /\/ace\/producer\/all(\?|#|$)/i, // .../ace/producer/all
+    ],
+
+    // cache controls
+    maxEntries: 8,            // keep it small (RAM)
+    ttlMs: 0,                 // 0 = never expire until reload (recommended per your ask)
+    // ignore cache-buster query params when forming cache key
+    ignoreParams: new Set(["v", "t", "_", "ts", "cachebust", "cb", "rnd"]),
+  };
+
+  const clean = (v) => (v == null ? "" : String(v).trim());
+
+  // RAM cache (URL-keyed)
+  const CACHE = (window.__NCZ_MASTER_PLAYLIST_CACHE__ ||= {
+    map: new Map(),   // key -> entry
+    hits: 0,
+    misses: 0,
+    puts: 0,
+    bypass: 0,
+    lastPutAt: 0,
+    clear() {
+      this.map.clear();
+      this.hits = this.misses = this.puts = this.bypass = 0;
+      this.lastPutAt = 0;
+      if (CFG.log) console.log("[NCZ MASTER CACHE] cleared");
+    },
+    dump() {
+      return Array.from(this.map.entries()).map(([k, v]) => ({
+        key: k,
+        status: v.status,
+        bytes: (v.text || "").length,
+        putAt: v.putAt,
+        ageMs: Date.now() - v.putAt,
+        tag: v.tag,
+      }));
+    },
+  });
+
+  function isBypassRequested(url, init) {
+    try {
+      // 1) query flags
+      const u = new URL(url, location.href);
+      const sp = u.searchParams;
+      if (sp.get("nocache") === "1") return true;
+      if ((sp.get("force") || "").toLowerCase() === "true") return true;
+
+      // 2) header flag
+      const hdrs = (init && init.headers) ? init.headers : null;
+      if (hdrs) {
+        // Headers object
+        if (typeof hdrs.get === "function") {
+          const v = hdrs.get("x-ncz-nocache");
+          if (v && String(v).trim() === "1") return true;
+        }
+        // plain object
+        if (typeof hdrs === "object" && !Array.isArray(hdrs)) {
+          const v = hdrs["x-ncz-nocache"] || hdrs["X-NCZ-NOCACHE"];
+          if (v && String(v).trim() === "1") return true;
+        }
+        // array tuples
+        if (Array.isArray(hdrs)) {
+          for (const [k, v] of hdrs) {
+            if (String(k || "").toLowerCase() === "x-ncz-nocache" && String(v || "").trim() === "1") return true;
+          }
+        }
+      }
+    } catch {}
+    return false;
+  }
+
+  function isMasterPlaylistUrl(url) {
+    const u = clean(url);
+    if (!u) return false;
+
+    const tests = [...CFG.sunoMasterMatchers, ...CFG.producerMasterMatchers];
+    for (const rx of tests) {
+      try {
+        if (rx.test(u)) return true;
+      } catch {}
+    }
+
+    // soft fallback (in case your paths are slightly different)
+    // only triggers if URL contains a strong "master/all" signal
+    const lo = u.toLowerCase();
+    if (lo.includes("/suno/") && lo.includes("/all")) return true;
+    if (lo.includes("/producer/") && lo.includes("/all")) return true;
+
+    return false;
+  }
+
+  function tagForUrl(url) {
+    const lo = String(url || "").toLowerCase();
+    if (lo.includes("/suno/")) return "suno";
+    if (lo.includes("/producer/")) return "producer";
+    return "master";
+  }
+
+  function normalizeKey(url) {
+    try {
+      const u = new URL(url, location.href);
+
+      // drop cache-buster params
+      for (const k of CFG.ignoreParams) {
+        try { u.searchParams.delete(k); } catch {}
+      }
+
+      // normalize ordering of remaining params
+      const entries = Array.from(u.searchParams.entries());
+      entries.sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[1]).localeCompare(String(b[1])));
+
+      u.search = "";
+      for (const [k, v] of entries) u.searchParams.append(k, v);
+
+      // keep origin+path+search (ignore hash)
+      return u.origin + u.pathname + (u.search || "");
+    } catch {
+      // fallback: strip hash + some common cachebust patterns
+      return String(url || "").split("#")[0]
+        .replace(/([?&])(v|t|_|ts|cachebust|cb|rnd)=\d+/ig, "$1")
+        .replace(/[?&]$/, "");
+    }
+  }
+
+  function cloneHeaders(res) {
+    const h = new Headers();
+    try {
+      res.headers.forEach((v, k) => h.set(k, v));
+    } catch {}
+    // ensure json-ish responses still parse
+    if (!h.get("content-type")) h.set("content-type", "application/json; charset=utf-8");
+    return h;
+  }
+
+  function makeResponseFromEntry(entry) {
+    const headers = new Headers(entry.headers || {});
+    if (!headers.get("content-type")) headers.set("content-type", "application/json; charset=utf-8");
+    return new Response(entry.text, {
+      status: entry.status || 200,
+      statusText: entry.statusText || "OK",
+      headers,
+    });
+  }
+
+  function evictIfNeeded() {
+    if (CACHE.map.size <= CFG.maxEntries) return;
+    // remove oldest
+    let oldestKey = null;
+    let oldestAt = Infinity;
+    for (const [k, v] of CACHE.map.entries()) {
+      const at = Number(v.putAt || 0) || 0;
+      if (at < oldestAt) { oldestAt = at; oldestKey = k; }
+    }
+    if (oldestKey != null) CACHE.map.delete(oldestKey);
+  }
+
+  function isExpired(entry) {
+    if (!entry) return true;
+    if (!CFG.ttlMs || CFG.ttlMs <= 0) return false;
+    const at = Number(entry.putAt || 0) || 0;
+    return (Date.now() - at) > CFG.ttlMs;
+  }
+
+  // Wrap current fetch (do NOT assume we're first patch)
+  const _fetch = window.fetch;
+  window.fetch = async function (...args) {
+    const input = args[0];
+    const init = args[1] || {};
+    const method = String(init.method || "GET").toUpperCase();
+
+    const url =
+      (typeof input === "string") ? input :
+      (input && typeof input === "object" && "url" in input) ? input.url :
+      "";
+
+    const shouldConsider =
+      method === "GET" &&
+      url &&
+      isMasterPlaylistUrl(url);
+
+    if (!shouldConsider) {
+      return _fetch.apply(this, args);
+    }
+
+    // bypass?
+    if (isBypassRequested(url, init)) {
+      CACHE.bypass++;
+      if (CFG.log) console.log("[NCZ MASTER CACHE] BYPASS", { url });
+      return _fetch.apply(this, args);
+    }
+
+    const key = normalizeKey(url);
+    const existing = CACHE.map.get(key);
+
+    if (existing && !isExpired(existing)) {
+      CACHE.hits++;
+      if (CFG.log) console.log("[NCZ MASTER CACHE] HIT", { tag: existing.tag, key });
+      return makeResponseFromEntry(existing);
+    }
+
+    CACHE.misses++;
+    if (CFG.log) console.log("[NCZ MASTER CACHE] MISS", { key });
+
+    const res = await _fetch.apply(this, args);
+
+    // Only cache successful responses
+    try {
+      if (res && res.ok) {
+        const clone = res.clone();
+        const text = await clone.text(); // cache raw text to replay forever
+        const headers = {};
+        try {
+          clone.headers.forEach((v, k) => { headers[k] = v; });
+        } catch {}
+
+        CACHE.map.set(key, {
+          tag: tagForUrl(url),
+          url: key,
+          text,
+          status: res.status,
+          statusText: res.statusText,
+          headers,
+          putAt: Date.now(),
+        });
+        CACHE.puts++;
+        CACHE.lastPutAt = Date.now();
+        evictIfNeeded();
+
+        if (CFG.log) console.log("[NCZ MASTER CACHE] PUT", {
+          tag: tagForUrl(url),
+          key,
+          bytes: text.length,
+          size: CACHE.map.size
+        });
+      }
+    } catch (e) {
+      if (CFG.log) console.warn("[NCZ MASTER CACHE] put failed", e);
+    }
+
+    return res;
+  };
+
+  // Tiny helper: manual warm-up (optional)
+  window.__nczWarmMasterPlaylists = async function () {
+    const urls = [];
+    try {
+      // best-effort: derive base prefix (/ace or root)
+      const prefix = location.pathname.startsWith("/ace/") ? "/ace" : "";
+      urls.push(prefix + "/suno/all");
+      urls.push(prefix + "/producer/all");
+    } catch {}
+    const out = [];
+    for (const u of urls) {
+      try {
+        const r = await fetch(u, { method: "GET" });
+        out.push({ url: u, ok: r.ok, status: r.status });
+      } catch (e) {
+        out.push({ url: u, ok: false, err: String(e?.message || e) });
+      }
+    }
+    return out;
+  };
+
+  if (CFG.log) {
+    console.log("[NCZ MASTER CACHE] installed (RAM-only).",
+      "Cache obj: window.__NCZ_MASTER_PLAYLIST_CACHE__",
+      "Warm helper: window.__nczWarmMasterPlaylists()"
+    );
+  }
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ✅ NCZ PATCH: Suno Track Map — add video_cover_url to __NCZ_SUNO_TRACK_MAP__ (V1)
+// - Ingests & stores: author, title, audio_url, video_url, ✅ video_cover_url
+// - Works for BOTH: /sunoPlaylist and /suno/all (master)
+// - RAM only (same global map you already use)
+// - Does NOT touch UI / overlays / info boxes
+// - Extra safety: wraps BOTH fetch() (clone.json) and Response.json() (in case a cache wrapper returns early)
+//
+// Paste AFTER your Suno map/author patch (and ideally after your master-playlist cache patch).
+
+(() => {
+  "use strict";
+  if (window.__NCZ_SUNO_TRACK_MAP_VIDEO_COVER_V1__) return;
+  window.__NCZ_SUNO_TRACK_MAP_VIDEO_COVER_V1__ = true;
+
+  const CFG = {
+    log: true,
+  };
+
+  const UUID_RX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+  const STORE = (window.__NCZ_SUNO_TRACK_MAP__ ||= {
+    byUuid: {},   // uuid -> { author, title, audio_url, video_url, video_cover_url }
+    lastIngestTs: 0,
+  });
+
+  const clean = (v) => (v == null ? "" : String(v).trim());
+  const lower = (s) => clean(s).toLowerCase();
+
+  function isSunoApiUrl(u) {
+    u = clean(u);
+    if (!u) return false;
+    return (
+      u.includes("/sunoPlaylist") ||
+      u.includes("/suno/all")
+    );
+  }
+
+  function pickUrl(it, keys) {
+    for (const k of keys) {
+      try {
+        const v = it && it[k];
+        if (!v) continue;
+
+        // direct string URL
+        if (typeof v === "string") {
+          const s = clean(v);
+          if (s) return s;
+          continue;
+        }
+
+        // object with url/src/href
+        if (typeof v === "object") {
+          const cand =
+            clean(v.url) ||
+            clean(v.src) ||
+            clean(v.href) ||
+            clean(v.mp4) ||
+            clean(v.file) ||
+            "";
+          if (cand) return cand;
+        }
+      } catch {}
+    }
+    return "";
+  }
+
+  function extractUuidFromAny(it) {
+    const direct = clean(it?.id || it?.uuid || it?.clip_id || it?.song_id || it?.songId || "");
+    if (direct && UUID_RX.test(direct)) return direct;
+
+    const au = clean(it?.audio_url || it?.audioUrl || it?.audio || it?.file || it?.url || "");
+    const vu = clean(it?.video_url || it?.videoUrl || it?.video || "");
+    const cu =
+      clean(it?.video_cover_url || it?.videoCoverUrl || it?.video_cover || it?.videoCover || "");
+
+    const m = (au.match(UUID_RX) || vu.match(UUID_RX) || cu.match(UUID_RX));
+    return m ? m[0] : "";
+  }
+
+  function ingest(payload) {
+    try {
+      const d = (payload && typeof payload === "object") ? payload : {};
+      const res = (d.result && typeof d.result === "object") ? d.result : d;
+
+      const items = Array.isArray(res.items) ? res.items : null;
+      const songs = Array.isArray(res.songs) ? res.songs : null;
+
+      let n = 0;
+
+      const upsert = (it) => {
+        if (!it || typeof it !== "object") return;
+
+        const uuid = extractUuidFromAny(it);
+        if (!uuid || !UUID_RX.test(uuid)) return;
+
+        const title = clean(it.title || it.name || it.caption || "");
+        const author =
+          clean(it.author) ||
+          clean(it.handle) ||
+          clean(it.artist) ||
+          clean(it.user) ||
+          clean(it.username) ||
+          clean(it.display_name) ||
+          clean(it.displayName) ||
+          "";
+
+        const audio_url = pickUrl(it, ["audio_url", "audioUrl", "audio", "file", "url"]);
+        const video_url  = pickUrl(it, ["video_url", "videoUrl", "video"]);
+
+        // ✅ NEW: video_cover_url (distinct from video_url)
+        // Common server keys we’ve seen / plausible variants:
+        const video_cover_url = pickUrl(it, [
+          "video_cover_url",
+          "videoCoverUrl",
+          "video_cover",
+          "videoCover",
+          "cover_video_url",
+          "coverVideoUrl",
+          "video_cover_mp4",
+          "videoCoverMp4",
+        ]);
+
+        const key = lower(uuid);
+        const cur = STORE.byUuid[key] || {};
+        STORE.byUuid[key] = {
+          author: author || cur.author || "",
+          title: title || cur.title || "",
+          audio_url: audio_url || cur.audio_url || "",
+          video_url: video_url || cur.video_url || "",
+          video_cover_url: video_cover_url || cur.video_cover_url || "", // ✅ NEW
+        };
+        n++;
+      };
+
+      if (items) items.forEach(upsert);
+      else if (songs) songs.forEach(upsert);
+
+      STORE.lastIngestTs = Date.now();
+
+      if (CFG.log && n) {
+        console.log("[NCZ SUNO MAP] ingested", n, "tracks; map size =", Object.keys(STORE.byUuid).length);
+      }
+    } catch (e) {
+      if (CFG.log) console.warn("[NCZ SUNO MAP] ingest failed", e);
+    }
+  }
+
+  // -----------------------------
+  // 1) fetch interceptor (clone.json)
+  // -----------------------------
+  const _fetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await _fetch.apply(this, args);
+
+    try {
+      const input = args[0];
+      const url =
+        (typeof input === "string") ? input :
+        (input && typeof input === "object" && input.url) ? input.url :
+        "";
+
+      if (isSunoApiUrl(url) && res && typeof res.clone === "function") {
+        const clone = res.clone();
+        clone.json().then(ingest).catch(() => {});
+      }
+    } catch {}
+
+    return res;
+  };
+
+  // -----------------------------
+  // 2) Response.prototype.json interceptor (handles cache wrappers that return early)
+  // -----------------------------
+  try {
+    const proto = window.Response && window.Response.prototype;
+    const _json = proto && proto.json;
+    if (proto && typeof _json === "function" && !proto.__nczSunoJsonWrappedV1) {
+      proto.__nczSunoJsonWrappedV1 = true;
+
+      proto.json = function (...a) {
+        const p = _json.apply(this, a);
+        try {
+          const url = clean(this.url || "");
+          if (isSunoApiUrl(url)) {
+            Promise.resolve(p).then(ingest).catch(() => {});
+          }
+        } catch {}
+        return p;
+      };
+    }
+  } catch {}
+
+  // Quick helpers for you in console
+  window.__nczSunoMapGet = (uuidOrUrl) => {
+    const s = clean(uuidOrUrl);
+    const m = s.match(UUID_RX);
+    const uuid = m ? m[0] : s;
+    return STORE.byUuid[lower(uuid)] || null;
+  };
+
+  if (CFG.log) {
+    console.log("[NCZ SUNO MAP] video_cover_url enabled. Example:");
+    console.log("window.__nczSunoMapGet('<uuid>').video_cover_url");
+  }
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ✅ NCZ PATCH: Auto-load https://xtdevelopment.net/ace/playlist.json into Song List (NO FILE CHOOSER) (V2)
+// - Waits 5s after page load
+// - Does NOT click any buttons (so no "user activation" errors)
+// - Uses your existing Song List function: window.addSongToList(...)
+// - Session-only (no persistence); safe on reload
+(() => {
+  "use strict";
+  if (window.__NCZ_AUTOLOAD_PLAYLIST_JSON_V2__) return;
+  window.__NCZ_AUTOLOAD_PLAYLIST_JSON_V2__ = true;
+
+  const CFG = {
+    url: "https://xtdevelopment.net/ace/playlist.json",
+    delayMs: 5000,
+    waitForFnsMs: 20000,
+    cacheBust: true,
+    log: true,
+    autoplayFirst: false, // set true if you want it to start playing first item
+  };
+
+  const LOG = "[NCZ AUTO PLAYLIST V2]";
+  const clean = (v) => (v == null ? "" : String(v).trim());
+  const isObj = (v) => v && typeof v === "object";
+
+  function log(...a){ if (CFG.log) console.log(LOG, ...a); }
+  function warn(...a){ console.warn(LOG, ...a); }
+
+  // session-only de-dupe (avoid accidental double import if script runs twice)
+  const SEEN = (window.__NCZ_SESSION_PLAYLIST_SEEN__ ||= new Set());
+
+  function withBust(url){
+    if (!CFG.cacheBust) return url;
+    const u = new URL(url, location.origin);
+    u.searchParams.set("_", String(Date.now()));
+    return u.toString();
+  }
+
+  function extractItems(data){
+    // Accept many shapes:
+    // - ["url", ...]
+    // - { urls:[...] } / { playlist:[...] } / { songs:[...] } / { items:[...] } / { tracks:[...] }
+    // - { ok:true, result:{ items:[...] } }
+    if (Array.isArray(data)) return data;
+
+    const d = isObj(data) ? data : {};
+    const r = isObj(d.result) ? d.result : d;
+
+    if (Array.isArray(r.urls)) return r.urls;
+    if (Array.isArray(r.playlist)) return r.playlist;
+    if (Array.isArray(r.songs)) return r.songs;
+    if (Array.isArray(r.items)) return r.items;
+    if (Array.isArray(r.tracks)) return r.tracks;
+
+    return [];
+  }
+
+  function pickUrl(it){
+    if (typeof it === "string") return clean(it);
+    const o = isObj(it) ? it : {};
+    return clean(
+      o.url ||
+      o.audio_url || o.audioUrl || o.audio ||
+      o.file || o.path || o.href ||
+      ""
+    );
+  }
+
+  function pickLabel(it){
+    if (!isObj(it)) return "";
+    const o = it;
+    // keep label light—your UI already builds nice captions from meta when present
+    return clean(o.label || o.title || o.name || o.caption || "");
+  }
+
+  function pickMeta(it){
+    if (!isObj(it)) return null;
+    const o = it;
+    const m = o.meta || o.metas || o.metadata || null;
+    return isObj(m) ? m : null;
+  }
+
+  async function waitForAddFn(){
+    const t0 = Date.now();
+    while (Date.now() - t0 < CFG.waitForFnsMs) {
+      if (typeof window.addSongToList === "function") return true;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return false;
+  }
+
+  async function loadPlaylist(){
+    // wait for your app functions
+    const ok = await waitForAddFn();
+    if (!ok) {
+      warn("window.addSongToList not found within wait window; aborting.");
+      return;
+    }
+
+    const url = withBust(CFG.url);
+    log("fetching", url);
+
+    let data;
+    try {
+      const resp = await fetch(url, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (e) {
+      warn("failed to fetch playlist:", e?.message || e);
+      return;
+    }
+
+    const items = extractItems(data);
+    if (!items.length) {
+      warn("playlist JSON had no items in a recognized shape.");
+      return;
+    }
+
+    let added = 0;
+    let firstIdx = null;
+
+    // preserve order in UI: addSongToList uses prepend(), so we add reverse order
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      const u = pickUrl(it);
+      if (!u) continue;
+
+      // session de-dupe by exact string
+      if (SEEN.has(u)) continue;
+      SEEN.add(u);
+
+      const label = pickLabel(it);
+      const meta = pickMeta(it);
+
+      try {
+        const idx = window.addSongToList(u, {
+          label,
+          meta,
+          serverItem: isObj(it) ? it : null,
+          downloadName: (isObj(it) && (it.file || it.path)) ? (it.file || it.path) : u,
+        });
+        if (firstIdx == null && Number.isFinite(Number(idx)) && idx >= 0) firstIdx = idx;
+        added++;
+      } catch {}
+    }
+
+    log("loaded playlist into Song List", { total: items.length, added });
+
+    if (CFG.autoplayFirst && firstIdx != null && typeof window.loadIntoMainPlayer === "function") {
+      try { window.loadIntoMainPlayer(firstIdx, true); } catch {}
+    }
+  }
+
+  function schedule(){
+    setTimeout(() => { loadPlaylist().catch(()=>{}); }, CFG.delayMs);
+    log("scheduled", { url: CFG.url, delayMs: CFG.delayMs });
+  }
+
+  if (document.readyState === "complete") schedule();
+  else window.addEventListener("load", schedule, { once: true });
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ✅ NCZ PATCH: Show total playlist count badge to the RIGHT of "Load Playlist" button (V1)
+// - Finds the Load Playlist button (by id if known, else by text match)
+// - Shows live count of songs in Song List (window.songs non-deleted preferred, else DOM count)
+// - Updates on Song List mutations + periodic safety tick
+(() => {
+  "use strict";
+  if (window.__NCZ_LOAD_PLAYLIST_COUNT_BADGE_V1__) return;
+  window.__NCZ_LOAD_PLAYLIST_COUNT_BADGE_V1__ = true;
+
+  const CFG = {
+    // If you KNOW the exact button id, put it here to avoid ambiguity:
+    // loadBtnId: "__ncz_load_playlist_btn__",
+    loadBtnId: "",
+
+    loadBtnTextRx: /load\s*playlist/i,
+
+    songListId: "songList",
+    badgeId: "__ncz_playlist_count_badge__",
+    styleId: "__ncz_playlist_count_badge_style__",
+
+    pollMs: 600,
+    mountRetryMs: 250,
+    mountMaxTries: 160, // ~40s
+    log: true,
+  };
+
+  const LOG = "[NCZ PLAYLIST COUNT]";
+
+  function log(...a){ if (CFG.log) console.log(LOG, ...a); }
+  function warn(...a){ console.warn(LOG, ...a); }
+
+  function $(id){ return document.getElementById(id); }
+
+  function ensureStyles(){
+    if ($(CFG.styleId)) return;
+    const st = document.createElement("style");
+    st.id = CFG.styleId;
+    st.textContent = `
+      #${CFG.badgeId}{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+        margin-left: 10px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.20);
+        color: rgba(233,238,252,.92);
+        font-size: 12px;
+        font-weight: 900;
+        line-height: 1.1;
+        white-space: nowrap;
+        user-select: none;
+      }
+      #${CFG.badgeId} .__mono__{
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-weight: 900;
+      }
+      #${CFG.badgeId}.__warn__{
+        border-color: rgba(255,211,106,.28);
+        color: rgba(255,249,230,.95);
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function findLoadPlaylistButton(){
+    if (CFG.loadBtnId) {
+      const byId = $(CFG.loadBtnId);
+      if (byId) return byId;
+    }
+
+    // prefer buttons first, then anchors (some UIs use <a> styled as buttons)
+    const btns = Array.from(document.querySelectorAll("button"));
+    let hit = btns.find(b => CFG.loadBtnTextRx.test((b.textContent || "").trim()));
+    if (hit) return hit;
+
+    const as = Array.from(document.querySelectorAll("a"));
+    hit = as.find(a => CFG.loadBtnTextRx.test((a.textContent || "").trim()));
+    return hit || null;
+  }
+
+  function countSongs(){
+    // Best: use your canonical songs[] list, skipping deleted tombstones
+    try{
+      if (Array.isArray(window.songs)) {
+        let n = 0;
+        for (const s of window.songs) {
+          if (!s) continue;
+          if (s.__deleted) continue;
+          n++;
+        }
+        return n;
+      }
+    }catch{}
+
+    // Fallback: DOM count
+    const list = $(CFG.songListId);
+    if (!list) return 0;
+    return list.querySelectorAll('[data-song-index]').length;
+  }
+
+  function ensureBadge(btn){
+    ensureStyles();
+
+    let badge = $(CFG.badgeId);
+    if (badge) return badge;
+
+    badge = document.createElement("span");
+    badge.id = CFG.badgeId;
+    badge.innerHTML = `Playlist: <span class="__mono__" data-role="n">0</span>`;
+    badge.title = "Total songs currently in the Song List";
+
+    // Insert immediately after the button (to the right)
+    try{
+      btn.insertAdjacentElement("afterend", badge);
+    }catch{
+      // fallback: append to parent
+      (btn.parentElement || document.body).appendChild(badge);
+    }
+    return badge;
+  }
+
+  function setBadgeValue(badge, n){
+    const num = badge.querySelector('[data-role="n"]');
+    if (num) num.textContent = String(n);
+  }
+
+  function updateBadge(){
+    const btn = findLoadPlaylistButton();
+    if (!btn) return false;
+
+    const badge = ensureBadge(btn);
+    const n = countSongs();
+    setBadgeValue(badge, n);
+
+    // warn style if list element missing (optional)
+    const list = $(CFG.songListId);
+    badge.classList.toggle("__warn__", !list);
+
+    return true;
+  }
+
+  function bindObserversOnce(){
+    if (window.__NCZ_PLAYLIST_COUNT_OBS_BOUND__) return;
+    window.__NCZ_PLAYLIST_COUNT_OBS_BOUND__ = true;
+
+    // Mutation observer on song list for instant updates
+    const list = $(CFG.songListId);
+    if (list) {
+      const mo = new MutationObserver(() => updateBadge());
+      mo.observe(list, { childList: true, subtree: true });
+      window.__NCZ_PLAYLIST_COUNT_MO__ = mo;
+    }
+
+    // safety poll (covers cases where songs[] changes without DOM mutation)
+    window.__NCZ_PLAYLIST_COUNT_TIMER__ = setInterval(updateBadge, CFG.pollMs);
+
+    // also update on visibility changes (tab restore)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") updateBadge();
+    });
+
+    log("observers bound");
+  }
+
+  // mount loop until the button exists
+  (function mount(){
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+
+      const ok = updateBadge();
+      if (ok) {
+        bindObserversOnce();
+        clearInterval(t);
+        log("badge mounted");
+        return;
+      }
+
+      if (tries === 1) log("waiting for Load Playlist button…");
+      if (tries > CFG.mountMaxTries) {
+        clearInterval(t);
+        warn("could not find Load Playlist button (check text or set CFG.loadBtnId)");
+      }
+    }, CFG.mountRetryMs);
+  })();
+})();
