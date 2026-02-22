@@ -380,6 +380,8 @@ PARAM_ALIASES = {
 
     "title": ["title", "track_title", "trackTitle", "song_title", "songTitle"],
     "author": ["author", "artist", "creator", "username", "user", "track_author", "trackAuthor"],
+    "signature": ["signature", "sig", "track_signature", "trackSignature", "user_signature", "userSignature", "song_signature", "songSignature"],
+
 }
 
 
@@ -462,6 +464,7 @@ class GenerateMusicRequest(BaseModel):
     lyrics: str = Field(default="", description="Lyric text")
     title: Optional[str] = None
     author: Optional[str] = None
+    signature: Optional[str] = None
 
     # New API semantics:
     # - thinking=True: use 5Hz LM to generate audio codes (lm-dit behavior)
@@ -1644,6 +1647,7 @@ def create_app() -> FastAPI:
                 original_lyrics = req.lyrics or ""
                 client_title = (getattr(req, "title", None) or "").strip()
                 client_author = (getattr(req, "author", None) or "").strip()
+                client_signature = (getattr(req, "signature", None) or "").strip()
 
                 if sample_mode or has_sample_query:
                     # Parse description hints from sample_query (if provided)
@@ -2027,6 +2031,8 @@ def create_app() -> FastAPI:
                     metas_out["title"] = client_title
                 if client_author and not metas_out.get("author"):
                     metas_out["author"] = client_author
+                if client_signature and not metas_out.get("signature"):
+                    metas_out["signature"] = client_signature
 
                 # Extract seed values for response (comma-separated for multiple audios)
                 seed_values = []
@@ -2072,6 +2078,7 @@ def create_app() -> FastAPI:
                     "dit_model": dit_model_name,
                     "title": client_title or None,
                     "author": client_author or None,
+                    "signature": client_signature or None,
 
                     # Final (post-format/sample/thinking) text
                     "final_prompt": caption or "",
@@ -2122,6 +2129,7 @@ def create_app() -> FastAPI:
                     "dit_model": dit_model_name,
                     "title": client_title or "",
                     "author": client_author or "",
+                    "signature": client_signature or "",
                 }
 
             t0 = time.time()
@@ -2480,7 +2488,7 @@ def create_app() -> FastAPI:
                 t.cancel()
             executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title="ACE-Step API", version="1.0", lifespan=lifespan)
+    app = FastAPI(title="NCZ API", version="1.1", lifespan=lifespan)
 
     # Enable CORS for browser-based frontends (e.g. studio.html opened via file://)
     # Restricted to localhost origins and the "null" origin (file:// protocol)
@@ -2532,6 +2540,7 @@ def create_app() -> FastAPI:
                 lyrics=p.str("lyrics"),
                 title=(p.str("title") or None),
                 author=(p.str("author") or None),
+                signature=(p.str("signature") or None),
                 thinking=p.bool("thinking"),
                 analysis_only=p.bool("analysis_only"),
                 full_analysis_only=p.bool("full_analysis_only"),
@@ -2852,8 +2861,8 @@ def create_app() -> FastAPI:
         """Health check endpoint for service status."""
         return _wrap_response({
             "status": "ok",
-            "service": "ACE-Step API",
-            "version": "1.0",
+            "service": "NCZ API",
+            "version": "1.1",
         })
 
     @app.get("/v1/stats")
@@ -3322,7 +3331,7 @@ def main() -> None:
     import argparse
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="ACE-Step API server")
+    parser = argparse.ArgumentParser(description="NCZ API server")
     parser.add_argument(
         "--host",
         default=os.getenv("ACESTEP_API_HOST", "127.0.0.1"),
