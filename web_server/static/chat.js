@@ -1811,16 +1811,17 @@
 })();
 
 
-
-// ✅ NCZ Suno Download Fix (SAFE)
-// - Only triggers on real "Download" controls (a/button that looks like download)
-// - If the click is for a Suno song (row data-uuid OR current song is Suno),
-//   it downloads https://cdn1.suno.ai/<uuid>.mp3 and names it "<uuid>.mp3"
-// - Does NOT hijack other buttons.
-// - Avoids recursion via e.isTrusted guard.
+// ✅ NCZ Suno Download Fix v2 (SCOPED)
+// - ONLY runs when clicking the real <a id="downloadLink"> inside its <section class="card">
+// - Never targets any other buttons/links anywhere else on the site
+// - If current song is Suno (uuid known), downloads https://cdn1.suno.ai/<uuid>.mp3
 (() => {
   "use strict";
+  if (window.__NCZ_SUNO_DOWNLOAD_FIX_V2__) return;
+  window.__NCZ_SUNO_DOWNLOAD_FIX_V2__ = true;
 
+  const DOWNLOAD_ID = "downloadLink";
+  const PLAYER_ID = "player";
   const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
   const CDN_BASE = "https://cdn1.suno.ai";
 
@@ -1831,94 +1832,28 @@
     return m ? m[0] : "";
   };
 
-  function looksLikeDownloadControl(el) {
-    if (!el || !(el instanceof Element)) return false;
-
-    const tag = (el.tagName || "").toUpperCase();
-    if (tag !== "A" && tag !== "BUTTON") return false;
-
-    const txt = (el.textContent || "").trim().toLowerCase();
-    const title = (el.getAttribute("title") || "").trim().toLowerCase();
-    const aria = (el.getAttribute("aria-label") || "").trim().toLowerCase();
-    const cls = (el.className || "").toString().toLowerCase();
-
-    // Strong signals
-    if (tag === "A" && el.hasAttribute("download")) return true;
-
-    // Text/title/class signals (tight-ish)
-    const hit =
-      txt === "download" || txt.includes("download") ||
-      title.includes("download") ||
-      aria.includes("download") ||
-      cls.includes("download");
-
-    return hit;
-  }
-
-  function getUuidFromRowOrNearby(target) {
-    if (!target || !(target instanceof Element)) return "";
-
-    // 1) your Suno injected rows
-    const row = target.closest(".__ncz_chat_suno_songrow__, [data-uuid]");
-    if (row) {
-      const du = firstUuid(row.getAttribute("data-uuid") || "");
-      if (du) return du;
-
-      // title/sub lines often contain "<uuid>.mp3"
-      const u1 = firstUuid(row.querySelector(".__title__")?.textContent || "");
-      if (u1) return u1;
-
-      const u2 = firstUuid(row.querySelector(".__sub__")?.textContent || "");
-      if (u2) return u2;
-
-      const u3 = firstUuid(row.textContent || "");
-      if (u3) return u3;
-    }
-
-    return "";
-  }
-
-  function getUuidFromCurrentSong() {
+  function getUuidFromCurrentContext() {
     // Prefer your stored last suno click
-    if (window.__nczLastSunoChat && window.__nczLastSunoChat.uuid) {
-      const u = firstUuid(window.__nczLastSunoChat.uuid);
-      if (u) return u;
-    }
+    try {
+      const u0 = firstUuid(window.__nczLastSunoChat && window.__nczLastSunoChat.uuid);
+      if (u0) return u0;
+    } catch {}
 
-    const songs = Array.isArray(window.songs) ? window.songs : [];
-
-    // 1) currentSongIndex -> check if it looks like a suno-chat song
-    if (typeof window.currentSongIndex === "number") {
-      const i = window.currentSongIndex | 0;
-      const s = songs[i];
-      if (s) {
-        const u =
-          firstUuid(s.__chat_suno_uuid) ||
-          firstUuid(s.suno_uuid) ||
-          firstUuid(s.uuid) ||
-          firstUuid(s.id) ||
-          firstUuid(s.filename) ||
-          firstUuid(s.title);
-        if (u) return u;
-      }
-    }
-
-    // 2) match player src to songs array
-    const player = document.getElementById("player") || document.querySelector("audio,video");
+    // Try current player src (sometimes contains uuid)
+    const player = document.getElementById(PLAYER_ID) || document.querySelector("audio,video");
     const src = (player && (player.currentSrc || player.src) || "").trim();
-    if (src) {
-      const hit = songs.find((s) => s && (s.url === src || s.src === src || s.__chat_suno_blob === src));
-      if (hit) {
-        const u =
-          firstUuid(hit.__chat_suno_uuid) ||
-          firstUuid(hit.suno_uuid) ||
-          firstUuid(hit.uuid) ||
-          firstUuid(hit.id) ||
-          firstUuid(hit.filename) ||
-          firstUuid(hit.title);
-        if (u) return u;
-      }
-    }
+    const u1 = firstUuid(src);
+    if (u1) return u1;
+
+    // Try current song object if you store uuid on it
+    try {
+      const songs = Array.isArray(window.songs) ? window.songs : [];
+      const i = (typeof window.currentSongIndex === "number") ? (window.currentSongIndex | 0) : -1;
+      const s = (i >= 0 && i < songs.length) ? songs[i] : null;
+      const u2 =
+        firstUuid(s && (s.__chat_suno_uuid || s.suno_uuid || s.uuid || s.id || s.filename || s.title));
+      if (u2) return u2;
+    } catch {}
 
     return "";
   }
@@ -1950,34 +1885,57 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  document.addEventListener("click", async (e) => {
-    // ✅ avoid recursion from synthetic clicks
-    if (!e.isTrusted) return;
+  function bindOnce() {
+    const dl = document.getElementById(DOWNLOAD_ID);
+    if (!dl) return false;
 
-    const t = e.target;
-    if (!(t instanceof Element)) return;
+    // ✅ HARD SCOPE: only allow this link inside its section.card
+    const card = dl.closest("section.card");
+    if (!card) return false;
 
-    // ✅ only if user clicked a real download control
-    const ctl = t.closest("a,button");
-    if (!looksLikeDownloadControl(ctl)) return;
+    if (dl.dataset.__nczSunoBound__ === "1") return true;
+    dl.dataset.__nczSunoBound__ = "1";
 
-    // Resolve Suno UUID: first try row, then current song
-    const uuid = getUuidFromRowOrNearby(t) || getUuidFromCurrentSong();
-    if (!uuid) return; // not a Suno case -> do nothing
+    dl.addEventListener("click", async (e) => {
+      // ✅ ONLY if click is truly on THIS link inside THIS card
+      if (!e.isTrusted) return;
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (!card.contains(t)) return;              // must be inside the same card
+      if (t.closest(`#${DOWNLOAD_ID}`) !== dl) return; // must be the downloadLink itself
 
-    // Take over ONLY for Suno download
-    e.preventDefault();
-    e.stopPropagation();
+      const uuid = getUuidFromCurrentContext();
+      if (!uuid) return; // not a Suno case -> let normal downloadLink behavior happen
 
-    try {
-      const blob = await fetchCdnBlob(uuid);
-      forceDownloadBlob(blob, `${uuid}.mp3`);
-    } catch (err) {
-      console.warn("[NCZ Suno Download Fix] failed:", err);
+      // Suno case: take over ONLY for this link
+      e.preventDefault();
+      e.stopPropagation();
+
+      try {
+        const blob = await fetchCdnBlob(uuid);
+        forceDownloadBlob(blob, `${uuid}.mp3`);
+      } catch (err) {
+        console.warn("[NCZ Suno Download Fix v2] failed:", err);
+      }
+    }, true);
+
+    return true;
+  }
+
+  // bind now + watch briefly (in case this script loads before the DOM chunk)
+  if (bindOnce()) {
+    console.log("[NCZ Suno Download Fix v2] active (scoped to #downloadLink only)");
+    return;
+  }
+
+  const mo = new MutationObserver(() => {
+    if (bindOnce()) {
+      mo.disconnect();
+      console.log("[NCZ Suno Download Fix v2] active (scoped to #downloadLink only)");
     }
-  }, true);
-
-  console.log("[NCZ Suno Download Fix] active");
+  });
+  mo.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(() => { try { mo.disconnect(); } catch {} }, 15000);
 })();
 
 
@@ -3910,7 +3868,8 @@ function readSavedPx() {
   // ✅ Audio URL (first UUID is STATIC; only the second (song uuid) changes)
   const RIFFS_STATIC_UUID = "ec30a5e2-fc28-441e-bef0-17ecf0928017";
   const AUDIO_BASE =
-    `https://storage.googleapis.com/corpusant-app-public/riffs/${RIFFS_STATIC_UUID}/audio/`;
+    `https://storage.googleapis.com/producer-app-public/clips/`;
+//`https://storage.googleapis.com/corpusant-app-public/riffs/${RIFFS_STATIC_UUID}/audio/`;
 
   // Match page links inside raw text (only riffusion/producer)
   const PAGE_RE = new RegExp(
