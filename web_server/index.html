@@ -485,6 +485,27 @@ function applyDownloadFilenameFromHref(dl){
   }
 
 
+
+// ---------- Signature helper (uses global patch if present) ----------
+function getCurrentSignature(){
+  try{
+    // Preferred: your patch’s getter
+    if (typeof window.__nczGetSignature === "function") {
+      const s = String(window.__nczGetSignature() || "").trim();
+      if (s) return s;
+    }
+
+    // Fallback: direct global (in case getter name ever changes)
+    const g = String(window.__NCZ_SIGNATURE_DATA__ || "").trim();
+    if (g) return g;
+  }catch{}
+
+  // Last fallback: optional input if you ever add it
+  return String(document.getElementById("metaSignature")?.value || "").trim();
+}
+
+
+
   function toNumOrUndef(v){
     const t = String(v || "").trim();
     if(!t) return undefined;
@@ -874,9 +895,19 @@ function pickSongDisplayTitle(meta, fallbackPromptOrLabel){
   }
 
   // IMPORTANT: do NOT clear player or list
-  function resetResultUI(){
-    $("resultMeta").textContent = "";
-  }
+  //function resetResultUI(){
+  //  $("resultMeta").textContent = "";
+  //}
+// IMPORTANT: do NOT clear player or list
+function resetResultUI(){
+  const el = $("resultMeta");
+  if(!el) return;
+
+  // ✅ Never wipe the box with a blank string.
+  // This element may contain complex UI (AI Radio / history overlay).
+  // Use #log / #progressText for "Submitting..." messages instead.
+  return;
+}
 
   function updateElapsed(){
     if(!startedAtMs){ $("elapsed").textContent = "—"; return; }
@@ -1206,7 +1237,8 @@ function onPlayerEnded(){
     // ✅ ADD THESE 3 LINES (defines the variables)
     const author = ($("__ncz_author_input__")?.value || "").trim();
     const title = ($("__ncz_songtitle_input__")?.value || "").trim();
-    const signature = ($("metaSignature")?.value || "").trim();
+    //const signature = ($("metaSignature")?.value || "").trim();
+    const signature = getCurrentSignature();
     const body = {
       prompt: prompt,
       lyrics: lyrics,
@@ -1359,7 +1391,7 @@ for(const r of results){
         // ✅ grab current UI meta values (pollOnce has its own scope)
         const title = ($("__ncz_songtitle_input__")?.value || "").trim();
         const author = ($("__ncz_author_input__")?.value || "").trim();
-        const signature = ($("metaSignature")?.value || "").trim(); // if you add one later
+        const signature = getCurrentSignature();
 
 
         // Append songs; do NOT touch main player playback/source.
@@ -5604,28 +5636,72 @@ const VIDEO_URLS_FALLBACK = [
   "https://imagine-public.x.ai/imagine-public/share-videos/a4263963-2696-424c-b81d-00c8dae49113.mp4",
 ];
 
-// This will become your actual list after loading
-let VIDEO_URLS = [];
+// ✅ Persisted custom list key
+const NCZ_VIDEO_LS_KEY = "NCZ_UI_CUSTOM_VIDEO_URLS";
 
-async function loadVideoUrlsFromFile(url = VIDEO_LIST_URL) {
-  // cache-bust so updates to videos.txt show up immediately
-  const bust = (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+// ✅ Runtime lists
+let VIDEO_URLS = [];          // what your picker uses RIGHT NOW
+let VIDEO_URLS_DEFAULT = [];  // the original “default” list loaded from file (or fallback)
 
-  const res = await fetch(url + bust, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to load video list: ${res.status} ${res.statusText}`);
-
-  const text = await res.text();
-
-  // one url per line; ignore blank lines + comment lines
-  const urls = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#") && !l.startsWith("//"));
-
-  return urls;
+// ---- list helpers ----
+function __nczIsHttp(u){ return /^https?:\/\/\S+/i.test(String(u||"").trim()); }
+function __nczUniqUrls(arr){
+  const out = [];
+  const seen = new Set();
+  for(const x of (arr||[])){
+    const v = String(x||"").trim();
+    if(!v || !__nczIsHttp(v)) continue;
+    const k = v.toLowerCase();
+    if(seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
+}
+function __nczParseUrlText(text){
+  const t = String(text||"").trim();
+  if(!t) return [];
+  if(t.startsWith("[") && t.endsWith("]")){
+    try{
+      const j = JSON.parse(t);
+      if(Array.isArray(j)) return __nczUniqUrls(j);
+    }catch{}
+  }
+  return __nczUniqUrls(
+    t.split(/\r?\n/)
+     .map(l=>l.trim())
+     .filter(l=>l && !l.startsWith("#") && !l.startsWith("//"))
+     .map(l=>l.split(/\s+/)[0].trim())
+  );
+}
+function __nczReadCustomFromLS(){
+  try{
+    const raw = localStorage.getItem(NCZ_VIDEO_LS_KEY);
+    if(!raw) return [];
+    const obj = JSON.parse(raw);
+    if(Array.isArray(obj)) return __nczUniqUrls(obj);
+    if(Array.isArray(obj?.urls)) return __nczUniqUrls(obj.urls);
+  }catch{}
+  return [];
+}
+function __nczWriteCustomToLS(urls){
+  try{
+    localStorage.setItem(NCZ_VIDEO_LS_KEY, JSON.stringify({ urls: __nczUniqUrls(urls), updated_at: Date.now() }));
+  }catch{}
+}
+function __nczClearCustomLS(){
+  try{ localStorage.removeItem(NCZ_VIDEO_LS_KEY); }catch{}
 }
 
-// Call this BEFORE any code that uses VIDEO_URLS
+async function loadVideoUrlsFromFile(url = VIDEO_LIST_URL) {
+  const bust = (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+  const res = await fetch(url + bust, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to load video list: ${res.status} ${res.statusText}`);
+  const text = await res.text();
+  return __nczParseUrlText(text);
+}
+
+// ✅ Call this BEFORE any code that uses VIDEO_URLS
 async function initVideoUrls() {
   try {
     const urls = await loadVideoUrlsFromFile();
@@ -5633,6 +5709,15 @@ async function initVideoUrls() {
   } catch (err) {
     console.warn("[videos.txt] load failed, using fallback list:", err);
     VIDEO_URLS = VIDEO_URLS_FALLBACK.slice();
+  }
+
+  // snapshot “default”
+  VIDEO_URLS_DEFAULT = VIDEO_URLS.slice();
+
+  // apply custom if present (THIS prevents the old-list flicker)
+  const custom = __nczReadCustomFromLS();
+  if(custom.length){
+    VIDEO_URLS = custom.slice();
   }
 }
 
@@ -5644,6 +5729,42 @@ initVideoUrls();
   // remember last change signature + last picked video
   let __lastChangeSig = "";
   let __lastVideoUrl = "";
+
+
+// ✅ Expose control API for the popup (replaces the REAL list your picker uses)
+window.__nczLyricsVideoList = window.__nczLyricsVideoList || {};
+
+window.__nczLyricsVideoList.get = () => (VIDEO_URLS || []).slice();
+window.__nczLyricsVideoList.getDefault = () => (VIDEO_URLS_DEFAULT || []).slice();
+
+window.__nczLyricsVideoList.set = (urls, { persist = true } = {}) => {
+  const clean = __nczUniqUrls(urls);
+  VIDEO_URLS = clean.slice();
+  if (persist) __nczWriteCustomToLS(clean);
+  return VIDEO_URLS.slice();
+};
+
+window.__nczLyricsVideoList.useDefault = ({ clearStored = true } = {}) => {
+  VIDEO_URLS = (VIDEO_URLS_DEFAULT || []).slice();
+  if (clearStored) __nczClearCustomLS();
+  return VIDEO_URLS.slice();
+};
+
+// Handy: immediately pick/play a new video using CURRENT list
+window.__nczLyricsVideoList.playNow = () => {
+  try{
+    const ui = ensureLyricsCard?.();
+    if(!ui || !ui.vid) return false;
+    const next = pickRandomVideoUrl?.();
+    if(!next) return false;
+    __lastVideoUrl = String(next || "");
+    setAndPlayVideo(ui.vid, next);
+    return true;
+  }catch{
+    return false;
+  }
+};
+
 
   // track desired mode based on audio player
   // "video" when audio is playing, "image" when paused
